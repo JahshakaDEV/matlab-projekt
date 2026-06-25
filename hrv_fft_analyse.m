@@ -2,8 +2,7 @@
 %  HRV-ANALYSE: EINFLUSS UNTERSCHIEDLICHER FFT-FENSTERFUNKTIONEN
 %  ------------------------------------------------------------------------
 %  Modularer Aufbau: alle Teilschritte sind als eigene (lokale) Funktionen
-%  am Ende der Datei umgesetzt (moeglich ab MATLAB R2016b). Einfach diese
-%  Datei oeffnen und ausfuehren.
+%  am Ende der Datei umgesetzt.
 %
 %  Verarbeitungskette:
 %    load_ecg_data -> preprocess_ecg -> detect_r_peaks ->
@@ -12,12 +11,9 @@
 %    calculate_hrv_bands ) -> plot_spectrum / plot_waterfall
 %
 %  Bedienung:
-%    * EDF_FILE = '' : es wird ein synthetisches 1-h-Test-EKG mit bekannter
-%      HRV erzeugt (LF 0.10 Hz, HF 0.25 Hz) -> Pipeline pruefbar.
-%    * EDF_FILE = 'pfad.edf' : eigene Aufzeichnung (EDF-Import ab R2020b).
+%    * EDF_FILE = 'pfad.edf' : eigene Aufzeichnung.
 %
-%  Benoetigt: Signal Processing Toolbox. Der 50-Hz-Notch ist bewusst ohne
-%  iirnotch implementiert (manueller Biquad).
+%  Benoetigt: Signal Processing Toolbox.
 %  ========================================================================
 
 clear; clc; close all;
@@ -99,20 +95,7 @@ fprintf('\n=== Analyse abgeschlossen ===\n');
 
 % =========================================================================
 function [ecg, fs] = load_ecg_data(filename)
-%LOAD_ECG_DATA  Liest ein EKG aus einer EDF-Datei oder erzeugt Testdaten.
-%   Ohne (gueltige) Datei wird auf ein synthetisches Test-EKG
-%   zurueckgegriffen, damit das Programm immer lauffaehig ist.
-%   EDF-Import benoetigt MATLAB R2020b+.
-
-    if nargin < 1 || isempty(filename) || exist(filename, 'file') ~= 2
-        if nargin >= 1 && ~isempty(filename)
-            warning('Datei "%s" nicht gefunden -> synthetische Testdaten.', filename);
-        else
-            fprintf('Kein EDF-Dateiname uebergeben -> synthetische Testdaten.\n');
-        end
-        [ecg, fs] = generate_synthetic_ecg(3600, 250);   % 1 h @ 250 Hz
-        return;
-    end
+%LOAD_ECG_DATA  Liest ein EKG aus einer EDF-Datei.
 
     % Abtastrate aus dem EDF-Header
     info   = edfinfo(filename);

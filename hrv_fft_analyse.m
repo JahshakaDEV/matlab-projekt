@@ -40,15 +40,15 @@ ecg = preprocess_ecg(ecg_raw, fs);
 
 % Roh- vs. gefiltertes Signal (erste 10 s)
 figure('Color','w','Position',[100 100 950 500]);
-sel = t <= 10;
+sel = t <= 360;
 subplot(2,1,1);
 plot(t(sel), ecg_raw(sel), 'Color', [0.6 0.6 0.6]);
 title('EKG - Rohsignal (erste 10 s)'); ylabel('Amplitude');
-grid on; box on; xlim([0 10]);
+grid on; box on; xlim([350 360]);
 subplot(2,1,2);
 plot(t(sel), ecg(sel), 'Color', [0.85 0.2 0.2]);
 title('EKG - nach Vorverarbeitung'); xlabel('Zeit [s]'); ylabel('Amplitude');
-grid on; box on; xlim([0 10]);
+grid on; box on; xlim([350 360]);
 
 %% --------------------------- 3. R-Zacken -------------------------------
 fprintf('\n=== 3. R-Zacken-Erkennung ===\n');
@@ -61,7 +61,7 @@ plot(r_sel/fs, ecg(r_sel), 'ro', 'MarkerFaceColor','r', 'MarkerSize',5);
 title('Erkannte R-Zacken (erste 10 s)');
 xlabel('Zeit [s]'); ylabel('Amplitude');
 legend({'EKG','R-Zacken'}, 'Location','northeast');
-grid on; box on; xlim([0 10]); hold off;
+grid on; box on; xlim([350 360]); hold off;
 
 %% ------------------------- 4. RR-Intervalle ----------------------------
 fprintf('\n=== 4. RR-Intervalle + Artefaktkorrektur ===\n');
@@ -104,88 +104,30 @@ function [ecg, fs] = load_ecg_data(filename)
 %   zurueckgegriffen, damit das Programm immer lauffaehig ist.
 %   EDF-Import benoetigt MATLAB R2020b+.
 
-if nargin < 1 || isempty(filename) || exist(filename, 'file') ~= 2
-    if nargin >= 1 && ~isempty(filename)
-        warning('Datei "%s" nicht gefunden -> synthetische Testdaten.', filename);
-    else
-        fprintf('Kein EDF-Dateiname uebergeben -> synthetische Testdaten.\n');
+    if nargin < 1 || isempty(filename) || exist(filename, 'file') ~= 2
+        if nargin >= 1 && ~isempty(filename)
+            warning('Datei "%s" nicht gefunden -> synthetische Testdaten.', filename);
+        else
+            fprintf('Kein EDF-Dateiname uebergeben -> synthetische Testdaten.\n');
+        end
+        [ecg, fs] = generate_synthetic_ecg(3600, 250);   % 1 h @ 250 Hz
+        return;
     end
-    [ecg, fs] = generate_synthetic_ecg(3600, 250);   % 1 h @ 250 Hz
-    return;
-end
 
-% Abtastrate aus dem EDF-Header
-info   = edfinfo(filename);
-recDur = seconds(info.DataRecordDuration); % Dauer in s
-fs     = double(info.NumSamples(1)) / recDur; % Abtastrate
+    % Abtastrate aus dem EDF-Header
+    info   = edfinfo(filename);
+    recDur = seconds(info.DataRecordDuration);
+    fs     = double(info.NumSamples(1)) / recDur;
 
-% Signaldaten (erster Kanal) zu einem durchgehenden Vektor zusammenfuegen
-tt    = edfread(filename);
-vname = tt.Properties.VariableNames{1}; % erster Kanal der Datei
-col   = tt.(vname);
-if iscell(col), ecg = cell2mat(col); else, ecg = col(:); end % Erzwing Spaltenvektor
-ecg = double(ecg(:)); % Zwingt Typ double
+    % Signaldaten (erster Kanal) zu einem durchgehenden Vektor zusammenfuegen
+    tt    = edfread(filename);
+    vname = tt.Properties.VariableNames{1};
+    col   = tt.(vname);
+    if iscell(col), ecg = cell2mat(col); else, ecg = col(:); end
+    ecg = double(ecg(:));
 
-fprintf('EDF geladen: "%s" | Kanal "%s" | fs = %.1f Hz | Dauer = %.1f min\n', ...
-    filename, vname, fs, numel(ecg)/fs/60);
-end
-
-% =========================================================================
-function [ecg, fs, t] = generate_synthetic_ecg(duration, fs)
-%GENERATE_SYNTHETIC_ECG  Synthetisches EKG mit bekannter HRV (Validierung).
-%   In die Schlagfolge werden gezielt eine LF- (0.10 Hz) und eine HF-
-%   Komponente (0.25 Hz) eingebaut; bei korrekter Pipeline muessen die
-%   Spektralpeaks genau dort liegen. Zusaetzlich werden Stoerungen
-%   ueberlagert (DC, Baseline, 50-Hz-Brummen, Rauschen).
-
-if nargin < 1 || isempty(duration), duration = 3600; end
-if nargin < 2 || isempty(fs),       fs       = 250;  end
-rng(42);   % reproduzierbar
-
-% 1) RR-Reihe mit LF/HF-Modulation
-mean_rr = 0.857;                  % ~70 bpm
-f_lf = 0.10; a_lf = 0.040;
-f_hf = 0.25; a_hf = 0.025;
-t_beats = zeros(1, ceil(duration/mean_rr) + 100);
-k = 1;
-while t_beats(k) < duration
-    tcur = t_beats(k);
-    rr = mean_rr + a_lf*sin(2*pi*f_lf*tcur) + a_hf*sin(2*pi*f_hf*tcur) ...
-        + 0.004*randn();
-    k = k + 1;
-    t_beats(k) = tcur + rr;
-end
-t_beats = t_beats(1:k-1);
-
-% 2) EKG aus QRS-T-Vorlage (5 Gauss-Loben P,Q,R,S,T) je Schlag
-t   = (0:1/fs:duration-1/fs).';
-ecg = zeros(numel(t), 1);
-lobes = [ -0.160,  0.10, 0.020;   % [Offset(s), Amplitude, sigma(s)]
-    -0.025, -0.12, 0.008;
-    0.000,  1.00, 0.009;
-    0.025, -0.18, 0.008;
-    0.180,  0.28, 0.040 ];
-for ib = 1:numel(t_beats)
-    tb = t_beats(ib);
-    i0 = max(1,        floor((tb-0.35)*fs) + 1);
-    i1 = min(numel(t), floor((tb+0.40)*fs) + 1);
-    if i1 < i0, continue; end
-    loc = t(i0:i1);
-    for il = 1:size(lobes,1)
-        off = lobes(il,1); amp = lobes(il,2); sig = lobes(il,3);
-        ecg(i0:i1) = ecg(i0:i1) + amp*exp(-((loc-(tb+off)).^2)./(2*sig^2));
-    end
-end
-
-% 3) Stoerungen ueberlagern
-ecg = ecg + 0.30*sin(2*pi*0.20*t);        % Baseline (Atmung)
-ecg = ecg + 0.15*sin(2*pi*0.05*t + 1.0);  % langsame Drift
-ecg = ecg + 0.08*sin(2*pi*50.0*t);        % 50-Hz-Brummen
-ecg = ecg + 0.02*randn(numel(t), 1);      % Rauschen
-ecg = ecg + 0.5;                          % DC-Offset
-
-fprintf(['Synthetisches EKG: %.0f min @ %.0f Hz | %d Schlaege | ', ...
-    'LF=%.2f Hz, HF=%.2f Hz\n'], duration/60, fs, numel(t_beats), f_lf, f_hf);
+    fprintf('EDF geladen: "%s" | Kanal "%s" | fs = %.1f Hz | Dauer = %.1f min\n', ...
+            filename, vname, fs, numel(ecg)/fs/60);
 end
 
 % =========================================================================
@@ -194,30 +136,30 @@ function ecg_filt = preprocess_ecg(ecg, fs, mains_freq)
 %   Alle Filter nullphasig (filtfilt) -> keine Phasenverschiebung, die
 %   R-Zacken werden zeitlich nicht verschoben.
 
-if nargin < 3 || isempty(mains_freq), mains_freq = 50; end
-ecg = double(ecg(:));
-nyq = fs / 2;
+    if nargin < 3 || isempty(mains_freq), mains_freq = 50; end
+    ecg = double(ecg(:));
+    nyq = fs / 2;
 
-ecg_filt = ecg - mean(ecg);                       % 1) DC entfernen
+    ecg_filt = ecg - mean(ecg);                       % 1) DC entfernen
 
-[b,a]    = butter(2, 0.5/nyq, 'high');            % 2) Baseline-Hochpass
-ecg_filt = filtfilt(b, a, ecg_filt);
+    [b,a]    = butter(2, 0.5/nyq, 'high');            % 2) Baseline-Hochpass
+    ecg_filt = filtfilt(b, a, ecg_filt);
 
-[bn,an]  = notch_coeffs(mains_freq, fs, 30);      % 3) 50-Hz-Notch
-ecg_filt = filtfilt(bn, an, ecg_filt);
+    [bn,an]  = notch_coeffs(mains_freq, fs, 30);      % 3) 50-Hz-Notch
+    ecg_filt = filtfilt(bn, an, ecg_filt);
 
-[b,a]    = butter(4, 40/nyq, 'low');              % 4) HF-Rauschen-Tiefpass
-ecg_filt = filtfilt(b, a, ecg_filt);
+    [b,a]    = butter(4, 40/nyq, 'low');              % 4) HF-Rauschen-Tiefpass
+    ecg_filt = filtfilt(b, a, ecg_filt);
 end
 
 % =========================================================================
 function [b, a] = notch_coeffs(f0, fs, Q)
 %NOTCH_COEFFS  RBJ-Bandstop-Biquad (Kerbfilter), ohne iirnotch.
-w0    = 2*pi*f0/fs;
-alpha = sin(w0) / (2*Q);
-b = [ 1,         -2*cos(w0),  1         ];
-a = [ 1 + alpha, -2*cos(w0),  1 - alpha ];
-b = b / a(1);  a = a / a(1);
+    w0    = 2*pi*f0/fs;
+    alpha = sin(w0) / (2*Q);
+    b = [ 1,         -2*cos(w0),  1         ];
+    a = [ 1 + alpha, -2*cos(w0),  1 - alpha ];
+    b = b / a(1);  a = a / a(1);
 end
 
 % =========================================================================
@@ -226,30 +168,30 @@ function r_locs = detect_r_peaks(ecg, fs)
 %   Bandpass 5-15 Hz -> Ableitung -> Quadrierung -> gleitende Mittelung
 %   -> Schwellwert-Peaksuche -> Feinjustierung auf das EKG-Maximum.
 
-ecg = double(ecg(:));
-nyq = fs / 2;
+    ecg = double(ecg(:));
+    nyq = fs / 2;
 
-[b,a] = butter(2, [5/nyq, 15/nyq], 'bandpass');   % QRS-Band betonen
-f  = filtfilt(b, a, ecg);
-d  = [f(1); diff(f)];                             % Ableitung
-sq = d .^ 2;                                      % Quadrierung
-w     = max(1, round(0.150*fs));
-integ = conv(sq, ones(w,1)/w, 'same');           % Energie-Einhuellende
+    [b,a] = butter(2, [5/nyq, 15/nyq], 'bandpass');   % QRS-Band betonen
+    f  = filtfilt(b, a, ecg);
+    d  = [f(1); diff(f)];                             % Ableitung
+    sq = d .^ 2;                                      % Quadrierung
+    w     = max(1, round(0.150*fs));
+    integ = conv(sq, ones(w,1)/w, 'same');           % Energie-Einhuellende
 
-thr     = 0.4 * mean(integ);
-minDist = round(0.25 * fs);                       % max. ~240 bpm
-[~, pk] = findpeaks(integ, 'MinPeakHeight', thr, 'MinPeakDistance', minDist);
+    thr     = 0.4 * mean(integ);
+    minDist = round(0.25 * fs);                       % max. ~240 bpm
+    [~, pk] = findpeaks(integ, 'MinPeakHeight', thr, 'MinPeakDistance', minDist);
 
-% Feinjustierung: echtes R-Maximum im Fenster +/- 50 ms suchen
-wref   = round(0.05 * fs);
-r_locs = zeros(numel(pk), 1);
-for i = 1:numel(pk)
-    lo = max(1, pk(i)-wref);  hi = min(numel(ecg), pk(i)+wref);
-    [~, rel] = max(ecg(lo:hi));
-    r_locs(i) = lo + rel - 1;
-end
-r_locs = unique(r_locs);
-fprintf('R-Zacken erkannt: %d\n', numel(r_locs));
+    % Feinjustierung: echtes R-Maximum im Fenster +/- 50 ms suchen
+    wref   = round(0.05 * fs);
+    r_locs = zeros(numel(pk), 1);
+    for i = 1:numel(pk)
+        lo = max(1, pk(i)-wref);  hi = min(numel(ecg), pk(i)+wref);
+        [~, rel] = max(ecg(lo:hi));
+        r_locs(i) = lo + rel - 1;
+    end
+    r_locs = unique(r_locs);
+    fprintf('R-Zacken erkannt: %d\n', numel(r_locs));
 end
 
 % =========================================================================
@@ -258,24 +200,24 @@ function [t_rr, rr, n_artifacts] = calculate_rr_intervals(r_locs, fs)
 %   Plausibel: 300-2000 ms und |RR-Median| < 50 %. Unplausible Werte
 %   werden per pchip aus den gueltigen Nachbarn ersetzt.
 
-r_locs = r_locs(:);
-t_r  = r_locs / fs;
-rr   = diff(t_r) * 1000;       % RR [ms]
-t_rr = t_r(2:end);
+    r_locs = r_locs(:);
+    t_r  = r_locs / fs;
+    rr   = diff(t_r) * 1000;       % RR [ms]
+    t_rr = t_r(2:end);
 
-ok  = (rr > 300) & (rr < 2000);
-med = median(rr(ok));
-ok  = ok & (abs(rr - med) < 0.5*med);
-bad = ~ok;
-n_artifacts = sum(bad);
+    ok  = (rr > 300) & (rr < 2000);
+    med = median(rr(ok));
+    ok  = ok & (abs(rr - med) < 0.5*med);
+    bad = ~ok;
+    n_artifacts = sum(bad);
 
-if n_artifacts > 0 && sum(ok) >= 2
-    rr(bad) = interp1(t_rr(ok), rr(ok), t_rr(bad), 'pchip', 'extrap');
-end
+    if n_artifacts > 0 && sum(ok) >= 2
+        rr(bad) = interp1(t_rr(ok), rr(ok), t_rr(bad), 'pchip', 'extrap');
+    end
 
-fprintf(['RR-Intervalle: %d | Artefakte: %d | mittl. RR = %.1f ms ', ...
-    '(%.1f bpm) | SDNN = %.1f ms\n'], numel(rr), n_artifacts, ...
-    mean(rr), 60000/mean(rr), std(rr));
+    fprintf(['RR-Intervalle: %d | Artefakte: %d | mittl. RR = %.1f ms ', ...
+             '(%.1f bpm) | SDNN = %.1f ms\n'], numel(rr), n_artifacts, ...
+             mean(rr), 60000/mean(rr), std(rr));
 end
 
 % =========================================================================
@@ -284,15 +226,15 @@ function [t_u, sig, fs_i] = interpolate_rr_signal(t_rr, rr, fs_i)
 %   Die FFT setzt gleichmaessige Abtastung voraus; die RR-Werte liegen aber
 %   zu unregelmaessigen Zeitpunkten vor. Danach lineare Trendbereinigung.
 
-if nargin < 3 || isempty(fs_i), fs_i = 4; end
-t_rr = t_rr(:);  rr = rr(:);
+    if nargin < 3 || isempty(fs_i), fs_i = 4; end
+    t_rr = t_rr(:);  rr = rr(:);
 
-t_u = (t_rr(1) : 1/fs_i : t_rr(end)).';
-sig = interp1(t_rr, rr, t_u, 'spline');
-sig = detrend(sig, 1);
+    t_u = (t_rr(1) : 1/fs_i : t_rr(end)).';
+    sig = interp1(t_rr, rr, t_u, 'spline');
+    sig = detrend(sig, 1);
 
-fprintf('Interpoliert: %d Werte @ %.0f Hz | Dauer = %.0f s\n', ...
-    numel(sig), fs_i, t_u(end)-t_u(1));
+    fprintf('Interpoliert: %d Werte @ %.0f Hz | Dauer = %.0f s\n', ...
+            numel(sig), fs_i, t_u(end)-t_u(1));
 end
 
 % =========================================================================
@@ -304,21 +246,21 @@ function [xw, win] = apply_window_function(x, window_type)
 %   verbreitern aber die Hauptkeule (geringere Aufloesung).
 %   Reinen Fenstervektor: [~,w] = apply_window_function(ones(N,1),'hann');
 
-x = double(x(:));
-N = numel(x);
-switch lower(window_type)
-    case 'rect',     win = ones(N,1);     % keine Fensterung
-    case 'hann',     win = hann(N);
-    case 'hamming',  win = hamming(N);
-    case 'blackman', win = blackman(N);
-    case 'kaiser',   win = kaiser(N, 8);  % beta = 8
-    case 'flattop',  win = flattopwin(N);
-    otherwise
-        error('apply_window_function:unknownWindow', ...
-            'Unbekannter Fenstertyp "%s".', window_type);
-end
-win = win(:);
-xw  = x .* win;
+    x = double(x(:));
+    N = numel(x);
+    switch lower(window_type)
+        case 'rect',     win = ones(N,1);     % keine Fensterung
+        case 'hann',     win = hann(N);
+        case 'hamming',  win = hamming(N);
+        case 'blackman', win = blackman(N);
+        case 'kaiser',   win = kaiser(N, 8);  % beta = 8
+        case 'flattop',  win = flattopwin(N);
+        otherwise
+            error('apply_window_function:unknownWindow', ...
+                  'Unbekannter Fenstertyp "%s".', window_type);
+    end
+    win = win(:);
+    xw  = x .* win;
 end
 
 % =========================================================================
@@ -329,16 +271,16 @@ function [f, psd] = calculate_fft(xw, win, fs)
 %   fensterunabhaengig. Innere Bins werden verdoppelt (einseitiges Spektrum
 %   eines reellen Signals).
 
-xw  = double(xw(:));  win = double(win(:));
-N   = numel(xw);
+    xw  = double(xw(:));  win = double(win(:));
+    N   = numel(xw);
 
-X = fft(xw);
-X = X(1:floor(N/2)+1);
-U   = sum(win .^ 2);
-psd = (abs(X).^2) / (fs * U);
-if N > 2, psd(2:end-1) = 2*psd(2:end-1); end
+    X = fft(xw);
+    X = X(1:floor(N/2)+1);
+    U   = sum(win .^ 2);
+    psd = (abs(X).^2) / (fs * U);
+    if N > 2, psd(2:end-1) = 2*psd(2:end-1); end
 
-f = (0:floor(N/2)).' * (fs / N);
+    f = (0:floor(N/2)).' * (fs / N);
 end
 
 % =========================================================================
@@ -347,35 +289,35 @@ function hrv = calculate_hrv_bands(f, psd)
 %   Baender (Task Force 1996): VLF 0.0033-0.04, LF 0.04-0.15, HF 0.15-0.40 Hz.
 %   Bandleistung = Flaeche unter der PSD (Trapezregel).
 
-f = f(:);  psd = psd(:);
-bands = struct('VLF',[0.0033 0.04], 'LF',[0.04 0.15], 'HF',[0.15 0.40]);
+    f = f(:);  psd = psd(:);
+    bands = struct('VLF',[0.0033 0.04], 'LF',[0.04 0.15], 'HF',[0.15 0.40]);
 
-hrv = struct();
-names = fieldnames(bands);
-for i = 1:numel(names)
-    r = bands.(names{i});
-    m = (f >= r(1)) & (f < r(2));
-    if nnz(m) >= 2, hrv.(names{i}) = trapz(f(m), psd(m));
-    else,           hrv.(names{i}) = 0; end
-end
+    hrv = struct();
+    names = fieldnames(bands);
+    for i = 1:numel(names)
+        r = bands.(names{i});
+        m = (f >= r(1)) & (f < r(2));
+        if nnz(m) >= 2, hrv.(names{i}) = trapz(f(m), psd(m));
+        else,           hrv.(names{i}) = 0; end
+    end
 
-hrv.Total = hrv.VLF + hrv.LF + hrv.HF;
-if hrv.Total > 0
-    hrv.VLF_rel = 100*hrv.VLF/hrv.Total;
-    hrv.LF_rel  = 100*hrv.LF /hrv.Total;
-    hrv.HF_rel  = 100*hrv.HF /hrv.Total;
-else
-    hrv.VLF_rel = 0; hrv.LF_rel = 0; hrv.HF_rel = 0;
-end
+    hrv.Total = hrv.VLF + hrv.LF + hrv.HF;
+    if hrv.Total > 0
+        hrv.VLF_rel = 100*hrv.VLF/hrv.Total;
+        hrv.LF_rel  = 100*hrv.LF /hrv.Total;
+        hrv.HF_rel  = 100*hrv.HF /hrv.Total;
+    else
+        hrv.VLF_rel = 0; hrv.LF_rel = 0; hrv.HF_rel = 0;
+    end
 
-lf_hf = hrv.LF + hrv.HF;                  % normalisierte Einheiten
-if lf_hf > 0
-    hrv.LF_nu = 100*hrv.LF/lf_hf;  hrv.HF_nu = 100*hrv.HF/lf_hf;
-else
-    hrv.LF_nu = 0; hrv.HF_nu = 0;
-end
+    lf_hf = hrv.LF + hrv.HF;                  % normalisierte Einheiten
+    if lf_hf > 0
+        hrv.LF_nu = 100*hrv.LF/lf_hf;  hrv.HF_nu = 100*hrv.HF/lf_hf;
+    else
+        hrv.LF_nu = 0; hrv.HF_nu = 0;
+    end
 
-if hrv.HF > 0, hrv.LF_HF = hrv.LF/hrv.HF; else, hrv.LF_HF = NaN; end
+    if hrv.HF > 0, hrv.LF_HF = hrv.LF/hrv.HF; else, hrv.LF_HF = NaN; end
 end
 
 % =========================================================================
@@ -387,57 +329,57 @@ function results = compare_window_functions(sig, fs_i, windows, seg_len_s, overl
 %   Rueckgabe: Struktur-Array je Fenster (.name .f .psd .seg_psd .t_seg
 %   .hrv .metrics). Zusaetzlich Vergleichsplots + Konsolentabelle.
 
-if nargin < 3 || isempty(windows)
-    windows = {'rect','hann','hamming','blackman','kaiser','flattop'};
-end
-if nargin < 4 || isempty(seg_len_s), seg_len_s = 300; end
-if nargin < 5 || isempty(overlap),   overlap   = 0.5; end
+    if nargin < 3 || isempty(windows)
+        windows = {'rect','hann','hamming','blackman','kaiser','flattop'};
+    end
+    if nargin < 4 || isempty(seg_len_s), seg_len_s = 300; end
+    if nargin < 5 || isempty(overlap),   overlap   = 0.5; end
 
-sig = double(sig(:));
-N   = round(seg_len_s * fs_i);
-if N > numel(sig)
-    warning('Signal kuerzer als ein Segment -> ganzes Signal als ein Segment.');
-    N = numel(sig);
-end
-step   = max(1, round(N*(1-overlap)));
-starts = 1:step:(numel(sig)-N+1);
-if isempty(starts), starts = 1; end
-t_seg  = (starts-1) / fs_i;
-nSeg   = numel(starts);
+    sig = double(sig(:));
+    N   = round(seg_len_s * fs_i);
+    if N > numel(sig)
+        warning('Signal kuerzer als ein Segment -> ganzes Signal als ein Segment.');
+        N = numel(sig);
+    end
+    step   = max(1, round(N*(1-overlap)));
+    starts = 1:step:(numel(sig)-N+1);
+    if isempty(starts), starts = 1; end
+    t_seg  = (starts-1) / fs_i;
+    nSeg   = numel(starts);
 
-fprintf('\nFenstervergleich: %d Segmente a %.0f s (%.0f%% Ueberlappung), %d Fenster\n', ...
-    nSeg, seg_len_s, overlap*100, numel(windows));
+    fprintf('\nFenstervergleich: %d Segmente a %.0f s (%.0f%% Ueberlappung), %d Fenster\n', ...
+            nSeg, seg_len_s, overlap*100, numel(windows));
 
-results = struct('name',{}, 'f',{}, 'psd',{}, 'seg_psd',{}, ...
-    't_seg',{}, 'hrv',{}, 'metrics',{});
-for iw = 1:numel(windows)
-    wname = windows{iw};
-    [~, win] = apply_window_function(ones(N,1), wname);
+    results = struct('name',{}, 'f',{}, 'psd',{}, 'seg_psd',{}, ...
+                     't_seg',{}, 'hrv',{}, 'metrics',{});
+    for iw = 1:numel(windows)
+        wname = windows{iw};
+        [~, win] = apply_window_function(ones(N,1), wname);
 
-    seg_psd = [];
-    for is = 1:nSeg
-        s0  = starts(is);
-        seg = sig(s0:s0+N-1);
-        seg = seg - mean(seg);              % lokalen DC abziehen
-        [f, psd] = calculate_fft(seg.*win, win, fs_i);
-        if isempty(seg_psd), seg_psd = zeros(numel(f), nSeg); end
-        seg_psd(:, is) = psd;
+        seg_psd = [];
+        for is = 1:nSeg
+            s0  = starts(is);
+            seg = sig(s0:s0+N-1);
+            seg = seg - mean(seg);              % lokalen DC abziehen
+            [f, psd] = calculate_fft(seg.*win, win, fs_i);
+            if isempty(seg_psd), seg_psd = zeros(numel(f), nSeg); end
+            seg_psd(:, is) = psd;
+        end
+
+        psd_avg = mean(seg_psd, 2);             % Welch-Mittelung
+        results(iw).name    = wname;
+        results(iw).f       = f;
+        results(iw).psd     = psd_avg;
+        results(iw).seg_psd = seg_psd;
+        results(iw).t_seg   = t_seg;
+        results(iw).hrv     = calculate_hrv_bands(f, psd_avg);
+        results(iw).metrics = window_metrics(win);
     end
 
-    psd_avg = mean(seg_psd, 2);             % Welch-Mittelung
-    results(iw).name    = wname;
-    results(iw).f       = f;
-    results(iw).psd     = psd_avg;
-    results(iw).seg_psd = seg_psd;
-    results(iw).t_seg   = t_seg;
-    results(iw).hrv     = calculate_hrv_bands(f, psd_avg);
-    results(iw).metrics = window_metrics(win);
-end
-
-plot_window_characteristics(windows, N);
-plot_overlaid_spectra(results, false);
-plot_overlaid_spectra(results, true);
-print_comparison_table(results);
+    plot_window_characteristics(windows, N);
+    plot_overlaid_spectra(results, false);
+    plot_overlaid_spectra(results, true);
+    print_comparison_table(results);
 end
 
 % =========================================================================
@@ -446,105 +388,105 @@ function m = window_metrics(win)
 %   PSL = hoechste Nebenkeule (Leakage), MLW = Hauptkeulenbreite
 %   (Aufloesung), ENBW = aequivalente Rauschbandbreite.
 
-win = win(:);  N = numel(win);
-m.ENBW = N * sum(win.^2) / (sum(win)^2);
+    win = win(:);  N = numel(win);
+    m.ENBW = N * sum(win.^2) / (sum(win)^2);
 
-Nfft = 65536;
-W    = abs(fft(win, Nfft));
-W    = W(1:floor(Nfft/2)+1);
-W    = W / W(1);
-WdB  = 20*log10(W + eps);
-fbin = (0:numel(W)-1).' * N / Nfft;
+    Nfft = 65536;
+    W    = abs(fft(win, Nfft));
+    W    = W(1:floor(Nfft/2)+1);
+    W    = W / W(1);
+    WdB  = 20*log10(W + eps);
+    fbin = (0:numel(W)-1).' * N / Nfft;
 
-% erste echte Nullstelle = erstes lokales Minimum (>0.2 Bins von DC);
-% robust auch beim Flat-Top (welliger flacher Scheitel)
-nullidx = [];
-for i = 2:numel(W)-1
-    if W(i) < W(i-1) && W(i) < W(i+1) && fbin(i) > 0.2
-        nullidx = i; break;
+    % erste echte Nullstelle = erstes lokales Minimum (>0.2 Bins von DC);
+    % robust auch beim Flat-Top (welliger flacher Scheitel)
+    nullidx = [];
+    for i = 2:numel(W)-1
+        if W(i) < W(i-1) && W(i) < W(i+1) && fbin(i) > 0.2
+            nullidx = i; break;
+        end
     end
-end
-if ~isempty(nullidx)
-    m.MLW = 2 * fbin(nullidx);
-    m.PSL = max(WdB(nullidx:end));
-else
-    m.MLW = NaN;  m.PSL = NaN;
-end
+    if ~isempty(nullidx)
+        m.MLW = 2 * fbin(nullidx);
+        m.PSL = max(WdB(nullidx:end));
+    else
+        m.MLW = NaN;  m.PSL = NaN;
+    end
 end
 
 % =========================================================================
 function plot_window_characteristics(windows, N)
 %PLOT_WINDOW_CHARACTERISTICS  Fensterform (Zeit) und Frequenzgang (dB).
-colors = lines(numel(windows));
-figure('Color','w','Position',[100 100 1000 420]);
+    colors = lines(numel(windows));
+    figure('Color','w','Position',[100 100 1000 420]);
 
-subplot(1,2,1); hold on;
-for iw = 1:numel(windows)
-    [~, win] = apply_window_function(ones(N,1), windows{iw});
-    plot((0:N-1)/(N-1), win, 'LineWidth', 1.4, 'Color', colors(iw,:));
-end
-xlabel('normierte Zeit'); ylabel('Amplitude');
-title('Fensterfunktionen - Zeitbereich');
-legend(windows, 'Location','south', 'Interpreter','none');
-grid on; box on; ylim([0 1.05]); hold off;
+    subplot(1,2,1); hold on;
+    for iw = 1:numel(windows)
+        [~, win] = apply_window_function(ones(N,1), windows{iw});
+        plot((0:N-1)/(N-1), win, 'LineWidth', 1.4, 'Color', colors(iw,:));
+    end
+    xlabel('normierte Zeit'); ylabel('Amplitude');
+    title('Fensterfunktionen - Zeitbereich');
+    legend(windows, 'Location','south', 'Interpreter','none');
+    grid on; box on; ylim([0 1.05]); hold off;
 
-subplot(1,2,2); hold on;
-Nfft = 4096;
-for iw = 1:numel(windows)
-    [~, win] = apply_window_function(ones(N,1), windows{iw});
-    W   = abs(fft(win, Nfft)); W = W(1:Nfft/2+1);
-    WdB = 20*log10(W/max(W) + eps);
-    fb  = (0:Nfft/2) / Nfft * N;
-    plot(fb, WdB, 'LineWidth', 1.3, 'Color', colors(iw,:));
-end
-xlabel('Frequenz [Bins]'); ylabel('Betrag [dB]');
-title('Fensterfunktionen - Frequenzgang');
-legend(windows, 'Location','northeast', 'Interpreter','none');
-grid on; box on; xlim([0 10]); ylim([-120 5]); hold off;
+    subplot(1,2,2); hold on;
+    Nfft = 4096;
+    for iw = 1:numel(windows)
+        [~, win] = apply_window_function(ones(N,1), windows{iw});
+        W   = abs(fft(win, Nfft)); W = W(1:Nfft/2+1);
+        WdB = 20*log10(W/max(W) + eps);
+        fb  = (0:Nfft/2) / Nfft * N;
+        plot(fb, WdB, 'LineWidth', 1.3, 'Color', colors(iw,:));
+    end
+    xlabel('Frequenz [Bins]'); ylabel('Betrag [dB]');
+    title('Fensterfunktionen - Frequenzgang');
+    legend(windows, 'Location','northeast', 'Interpreter','none');
+    grid on; box on; xlim([0 10]); ylim([-120 5]); hold off;
 end
 
 % =========================================================================
 function plot_overlaid_spectra(results, logScale)
 %PLOT_OVERLAID_SPECTRA  Ueberlagerte HRV-Spektren (linear oder dB).
-colors = lines(numel(results));
-figure('Color','w'); hold on;
-fmax = 0.5;
-for iw = 1:numel(results)
-    f = results(iw).f;  psd = results(iw).psd;
-    if logScale, y = 10*log10(psd + eps); else, y = psd; end
-    plot(f, y, 'LineWidth', 1.3, 'Color', colors(iw,:));
-end
-yl = ylim;                               % Bandgrenzen (plot-basiert)
-for fb = [0.04 0.15 0.40]
-    plot([fb fb], yl, ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility','off');
-end
-ylim(yl); xlim([0 fmax]); xlabel('Frequenz [Hz]');
-if logScale
-    ylabel('Leistungsdichte [dB]');
-    title('Ueberlagerte HRV-Spektren (logarithmisch) - Leakage-Vergleich');
-else
-    ylabel('Leistungsdichte [ms^2/Hz]');
-    title('Ueberlagerte HRV-Spektren (linear)');
-end
-legend({results.name}, 'Location','northeast', 'Interpreter','none');
-grid on; box on; hold off;
+    colors = lines(numel(results));
+    figure('Color','w'); hold on;
+    fmax = 0.5;
+    for iw = 1:numel(results)
+        f = results(iw).f;  psd = results(iw).psd;
+        if logScale, y = 10*log10(psd + eps); else, y = psd; end
+        plot(f, y, 'LineWidth', 1.3, 'Color', colors(iw,:));
+    end
+    yl = ylim;                               % Bandgrenzen (plot-basiert)
+    for fb = [0.04 0.15 0.40]
+        plot([fb fb], yl, ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility','off');
+    end
+    ylim(yl); xlim([0 fmax]); xlabel('Frequenz [Hz]');
+    if logScale
+        ylabel('Leistungsdichte [dB]');
+        title('Ueberlagerte HRV-Spektren (logarithmisch) - Leakage-Vergleich');
+    else
+        ylabel('Leistungsdichte [ms^2/Hz]');
+        title('Ueberlagerte HRV-Spektren (linear)');
+    end
+    legend({results.name}, 'Location','northeast', 'Interpreter','none');
+    grid on; box on; hold off;
 end
 
 % =========================================================================
 function print_comparison_table(results)
 %PRINT_COMPARISON_TABLE  Vergleichstabelle im Befehlsfenster.
-fprintf('\n=================== Vergleich der Fensterfunktionen ===================\n');
-fprintf('%-9s | %7s %6s %6s | %8s %8s %7s | %6s\n', ...
-    'Fenster','PSL','MLW','ENBW','LF','HF','LF/HF','VLF');
-fprintf('%-9s | %7s %6s %6s | %8s %8s %7s | %6s\n', ...
-    '','[dB]','[Bin]','[Bin]','[ms^2]','[ms^2]','[-]','[ms^2]');
-fprintf('----------------------------------------------------------------------\n');
-for iw = 1:numel(results)
-    m = results(iw).metrics;  h = results(iw).hrv;
-    fprintf('%-9s | %7.1f %6.2f %6.2f | %8.1f %8.1f %7.2f | %6.1f\n', ...
-        results(iw).name, m.PSL, m.MLW, m.ENBW, h.LF, h.HF, h.LF_HF, h.VLF);
-end
-fprintf('======================================================================\n');
+    fprintf('\n=================== Vergleich der Fensterfunktionen ===================\n');
+    fprintf('%-9s | %7s %6s %6s | %8s %8s %7s | %6s\n', ...
+            'Fenster','PSL','MLW','ENBW','LF','HF','LF/HF','VLF');
+    fprintf('%-9s | %7s %6s %6s | %8s %8s %7s | %6s\n', ...
+            '','[dB]','[Bin]','[Bin]','[ms^2]','[ms^2]','[-]','[ms^2]');
+    fprintf('----------------------------------------------------------------------\n');
+    for iw = 1:numel(results)
+        m = results(iw).metrics;  h = results(iw).hrv;
+        fprintf('%-9s | %7.1f %6.2f %6.2f | %8.1f %8.1f %7.2f | %6.1f\n', ...
+                results(iw).name, m.PSL, m.MLW, m.ENBW, h.LF, h.HF, h.LF_HF, h.VLF);
+    end
+    fprintf('======================================================================\n');
 end
 
 % =========================================================================
@@ -552,43 +494,43 @@ function plot_spectrum(f, psd, window_name, hrv)
 %PLOT_SPECTRUM  HRV-Leistungsdichtespektrum mit schattierten Baendern.
 %   Optionales hrv-Argument blendet LF/HF-Kennwerte als Textfeld ein.
 
-if nargin < 3 || isempty(window_name), window_name = ''; end
-figure('Color','w'); hold on;
+    if nargin < 3 || isempty(window_name), window_name = ''; end
+    figure('Color','w'); hold on;
 
-fmax = 0.5;
-ymax = 1.05 * max(psd(f <= fmax));
-if ~isfinite(ymax) || ymax <= 0, ymax = 1; end
+    fmax = 0.5;
+    ymax = 1.05 * max(psd(f <= fmax));
+    if ~isfinite(ymax) || ymax <= 0, ymax = 1; end
 
-shade_hrv_bands(ymax);
-plot(f, psd, 'k', 'LineWidth', 1.3);
+    shade_hrv_bands(ymax);
+    plot(f, psd, 'k', 'LineWidth', 1.3);
 
-xlim([0 fmax]); ylim([0 ymax]);
-xlabel('Frequenz [Hz]'); ylabel('Leistungsdichte [ms^2/Hz]');
-title(sprintf('HRV-Leistungsdichtespektrum - Fenster: %s', window_name));
-grid on; box on;
-legend({'VLF (0.0033-0.04 Hz)','LF (0.04-0.15 Hz)','HF (0.15-0.40 Hz)','PSD'}, ...
-    'Location','northeast');
+    xlim([0 fmax]); ylim([0 ymax]);
+    xlabel('Frequenz [Hz]'); ylabel('Leistungsdichte [ms^2/Hz]');
+    title(sprintf('HRV-Leistungsdichtespektrum - Fenster: %s', window_name));
+    grid on; box on;
+    legend({'VLF (0.0033-0.04 Hz)','LF (0.04-0.15 Hz)','HF (0.15-0.40 Hz)','PSD'}, ...
+           'Location','northeast');
 
-if nargin >= 4 && ~isempty(hrv)
-    txt = sprintf('LF/HF = %.2f\nLF = %.1f ms^2 (%.0f%%)\nHF = %.1f ms^2 (%.0f%%)', ...
-        hrv.LF_HF, hrv.LF, hrv.LF_rel, hrv.HF, hrv.HF_rel);
-    text(0.97*fmax, 0.95*ymax, txt, 'HorizontalAlignment','right', ...
-        'VerticalAlignment','top', 'BackgroundColor','w', ...
-        'EdgeColor',[0.6 0.6 0.6], 'FontSize',9);
-end
-hold off;
+    if nargin >= 4 && ~isempty(hrv)
+        txt = sprintf('LF/HF = %.2f\nLF = %.1f ms^2 (%.0f%%)\nHF = %.1f ms^2 (%.0f%%)', ...
+                      hrv.LF_HF, hrv.LF, hrv.LF_rel, hrv.HF, hrv.HF_rel);
+        text(0.97*fmax, 0.95*ymax, txt, 'HorizontalAlignment','right', ...
+             'VerticalAlignment','top', 'BackgroundColor','w', ...
+             'EdgeColor',[0.6 0.6 0.6], 'FontSize',9);
+    end
+    hold off;
 end
 
 % =========================================================================
 function shade_hrv_bands(ymax)
 %SHADE_HRV_BANDS  Hinterlegt VLF/LF/HF farblich.
-bands = [0.0033 0.04; 0.04 0.15; 0.15 0.40];
-cols  = [0.85 0.90 0.98; 0.80 0.95 0.85; 0.99 0.88 0.82];
-for i = 1:size(bands,1)
-    x = bands(i,:);
-    patch([x(1) x(2) x(2) x(1)], [0 0 ymax ymax], cols(i,:), ...
-        'EdgeColor','none', 'FaceAlpha',0.7);
-end
+    bands = [0.0033 0.04; 0.04 0.15; 0.15 0.40];
+    cols  = [0.85 0.90 0.98; 0.80 0.95 0.85; 0.99 0.88 0.82];
+    for i = 1:size(bands,1)
+        x = bands(i,:);
+        patch([x(1) x(2) x(2) x(1)], [0 0 ymax ymax], cols(i,:), ...
+              'EdgeColor','none', 'FaceAlpha',0.7);
+    end
 end
 
 % =========================================================================
@@ -596,32 +538,32 @@ function plot_waterfall(f, seg_psd, t_seg, window_name)
 %PLOT_WATERFALL  3D-Wasserfall der Segmentspektren mit HRV-Bandgrenzen.
 %   Jede Linie = Spektrum eines Segments -> zeitliche Stabilitaet sichtbar.
 
-if nargin < 4 || isempty(window_name), window_name = ''; end
-f   = f(:);
-sel = f <= 0.5;
-fz  = f(sel);
-Z   = seg_psd(sel, :).';                 % Zeilen = Segmente
-nSeg = size(Z, 1);
-if nargin < 3 || isempty(t_seg), t_seg = 1:nSeg; end
-t_seg = t_seg(:);
+    if nargin < 4 || isempty(window_name), window_name = ''; end
+    f   = f(:);
+    sel = f <= 0.5;
+    fz  = f(sel);
+    Z   = seg_psd(sel, :).';                 % Zeilen = Segmente
+    nSeg = size(Z, 1);
+    if nargin < 3 || isempty(t_seg), t_seg = 1:nSeg; end
+    t_seg = t_seg(:);
 
-figure('Color','w');
-waterfall(fz, t_seg, Z);
-colormap(turbo);
-xlabel('Frequenz [Hz]'); ylabel('Segment-Startzeit [s]');
-zlabel('Leistungsdichte [ms^2/Hz]');
-title(sprintf('HRV-Wasserfalldiagramm - Fenster: %s', window_name));
-grid on; box on; view(40, 30);
+    figure('Color','w');
+    waterfall(fz, t_seg, Z);
+    colormap(turbo);
+    xlabel('Frequenz [Hz]'); ylabel('Segment-Startzeit [s]');
+    zlabel('Leistungsdichte [ms^2/Hz]');
+    title(sprintf('HRV-Wasserfalldiagramm - Fenster: %s', window_name));
+    grid on; box on; view(40, 30);
 
-% Bandgrenzen als senkrechte Ebenen (je 2 Dreiecke -> MATLAB+Octave)
-hold on;
-zmax = max(Z(:)); if ~isfinite(zmax) || zmax <= 0, zmax = 1; end
-ymin = min(t_seg); ymax = max(t_seg); if ymax == ymin, ymax = ymin+1; end
-for fb = [0.04 0.15 0.40]
-    patch([fb fb fb], [ymin ymax ymax], [0 0 zmax], [0.3 0.3 0.3], ...
-        'FaceAlpha',0.12, 'EdgeColor',[0.3 0.3 0.3], 'LineStyle','--');
-    patch([fb fb fb], [ymin ymax ymin], [0 zmax zmax], [0.3 0.3 0.3], ...
-        'FaceAlpha',0.12, 'EdgeColor','none');
-end
-hold off;
+    % Bandgrenzen als senkrechte Ebenen (je 2 Dreiecke -> MATLAB+Octave)
+    hold on;
+    zmax = max(Z(:)); if ~isfinite(zmax) || zmax <= 0, zmax = 1; end
+    ymin = min(t_seg); ymax = max(t_seg); if ymax == ymin, ymax = ymin+1; end
+    for fb = [0.04 0.15 0.40]
+        patch([fb fb fb], [ymin ymax ymax], [0 0 zmax], [0.3 0.3 0.3], ...
+              'FaceAlpha',0.12, 'EdgeColor',[0.3 0.3 0.3], 'LineStyle','--');
+        patch([fb fb fb], [ymin ymax ymin], [0 zmax zmax], [0.3 0.3 0.3], ...
+              'FaceAlpha',0.12, 'EdgeColor','none');
+    end
+    hold off;
 end

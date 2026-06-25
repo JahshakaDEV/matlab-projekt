@@ -44,11 +44,11 @@ sel = t <= 360;
 subplot(2,1,1);
 plot(t(sel), ecg_raw(sel), 'Color', [0.6 0.6 0.6]);
 title('EKG - Rohsignal (erste 10 s)'); ylabel('Amplitude');
-grid on; box on; xlim([350 360]);
+grid on; box on; xlim([190 200]);
 subplot(2,1,2);
 plot(t(sel), ecg(sel), 'Color', [0.85 0.2 0.2]);
 title('EKG - nach Vorverarbeitung'); xlabel('Zeit [s]'); ylabel('Amplitude');
-grid on; box on; xlim([350 360]);
+grid on; box on; xlim([190 200]);
 
 %% --------------------------- 3. R-Zacken -------------------------------
 fprintf('\n=== 3. R-Zacken-Erkennung ===\n');
@@ -61,7 +61,7 @@ plot(r_sel/fs, ecg(r_sel), 'ro', 'MarkerFaceColor','r', 'MarkerSize',5);
 title('Erkannte R-Zacken (erste 10 s)');
 xlabel('Zeit [s]'); ylabel('Amplitude');
 legend({'EKG','R-Zacken'}, 'Location','northeast');
-grid on; box on; xlim([350 360]); hold off;
+grid on; box on; xlim([0 10]); hold off;
 
 %% ------------------------- 4. RR-Intervalle ----------------------------
 fprintf('\n=== 4. RR-Intervalle + Artefaktkorrektur ===\n');
@@ -389,7 +389,7 @@ function m = window_metrics(win)
 %   (Aufloesung), ENBW = aequivalente Rauschbandbreite.
 
     win = win(:);  N = numel(win);
-    m.ENBW = N * sum(win.^2) / (sum(win)^2);
+    m.ENBW = enbw(win);
 
     Nfft = 65536;
     W    = abs(fft(win, Nfft));

@@ -34,16 +34,16 @@ t = (0:numel(ecg_raw)-1).' / fs;
 fprintf('\n=== 2. Vorverarbeitung ===\n');
 ecg = preprocess_ecg(ecg_raw, fs);
 
-% Roh- vs. gefiltertes Signal (erste 10 s)
+% Roh- vs. gefiltertes Signal (Ausschnitt 10-20 s)
 figure('Color','w','Position',[100 100 950 500]);
-sel = t <= 360;
+sel = t <= 30;                                    % nur benoetigten Ausschnitt plotten
 subplot(2,1,1);
 plot(t(sel), ecg_raw(sel), 'Color', [0.6 0.6 0.6]);
-title('EKG - Rohsignal (erste 10 s)'); ylabel('Amplitude');
+title('EKG - Rohsignal (Ausschnitt 10-20 s)'); ylabel('Amplitude');
 grid on; box on; xlim([10 20]);
 subplot(2,1,2);
 plot(t(sel), ecg(sel), 'Color', [0.85 0.2 0.2]);
-title('EKG - nach Vorverarbeitung'); xlabel('Zeit [s]'); ylabel('Amplitude');
+title('EKG - nach Vorverarbeitung (Ausschnitt 10-20 s)'); xlabel('Zeit [s]'); ylabel('Amplitude');
 grid on; box on; xlim([10 20]);
 
 %% --------------------------- 3. R-Zacken -------------------------------
@@ -80,10 +80,32 @@ results = compare_window_functions(sig, fs_i, WINDOWS, SEG_LEN_S, OVERLAP);
 
 %% --------------------- 7. Einzeldarstellungen --------------------------
 fprintf('\n=== 7. Einzelspektren und Wasserfalldiagramme ===\n');
+
+% Gemeinsames z-Maximum ueber alle Fenster (Anforderung 2.7: einheitliche
+% Skalierung -> alle Wasserfalldiagramme werden vergleichbar).
+zmax_all = 0;
+for iw = 1:numel(results)
+    sel_f  = results(iw).f <= 0.5;
+    Zi     = results(iw).seg_psd(sel_f, :);
+    zmax_all = max(zmax_all, max(Zi(:)));
+end
+
 for iw = 1:numel(results)
     R = results(iw);
     plot_spectrum(R.f, R.psd, R.name, R.hrv);
-    plot_waterfall(R.f, R.seg_psd, R.t_seg, R.name);
+    plot_waterfall(R.f, R.seg_psd, R.t_seg, R.name, zmax_all);
+end
+
+% Get all open figure handles
+figHandles = findall(0, 'Type', 'figure');
+
+% Name of your single PDF output file
+pdfName = 'all_figures.pdf';
+
+% Loop through and append
+for i = 1:length(figHandles)
+    % Append set to true adds each figure as a new page
+    exportgraphics(figHandles(i), pdfName, 'Append', true);
 end
 
 fprintf('\n=== Analyse abgeschlossen ===\n');
@@ -142,20 +164,22 @@ end
 % =========================================================================
 function [t_rr, rr, n_artifacts] = calculate_rr_intervals(r_locs, fs)
 %CALCULATE_RR_INTERVALS  RR-Intervalle [ms] mit Plausibilitaetspruefung.
-%   Plausibel: 300-2000 ms und |RR-Median| < 50 %. Unplausible Werte
-%   werden per pchip aus den gueltigen Nachbarn ersetzt.
+%   Plausibel = 300-2000 ms UND hoechstens 20 % Abweichung vom lokalen
+%   Median. Unplausible Werte werden per pchip aus den gueltigen Nachbarn
+%   ersetzt.
 
 r_locs = r_locs(:);
 t_r  = r_locs / fs;
 rr   = diff(t_r) * 1000;       % RR [ms]
 t_rr = t_r(2:end);
 
-width_number = 9; % Fensterbreite in Anzahl Intervalle 9 = +- 4 Nachbarn
-local_med = movmedian(rr, width_number); % gleitender Median
+% Plausibilitaetspruefung in zwei einfachen Bedingungen:
+%  1) physiologische Grenzen 300-2000 ms (~30-200 bpm),
+%  2) hoechstens 20 % Abweichung vom lokalen Median (gleitendes Fenster
+%     ueber 5 Intervalle) -> faengt einzelne Ausreisser/Extrasystolen.
+local_med = movmedian(rr, 5);
 ok  = (rr > 300) & (rr < 2000);
-ok = ok & (abs(rr -local_med) < 0.25*local_med); % 25% Abweichung vom lokalen Median
-med = median(rr(ok));
-ok  = ok & (abs(rr - med) < 0.5*med);
+ok  = ok & (abs(rr - local_med) < 0.2*local_med);
 bad = ~ok;
 n_artifacts = sum(bad);
 
@@ -333,33 +357,30 @@ end
 % =========================================================================
 function m = window_metrics(win)
 %WINDOW_METRICS  Kenngroessen: PSL [dB], MLW [Bins], ENBW [Bins].
-%   PSL = hoechste Nebenkeule (Leakage), MLW = Hauptkeulenbreite
-%   (Aufloesung), ENBW = aequivalente Rauschbandbreite.
+%   PSL = hoechste Nebenkeule (Leakage-Mass), MLW = Hauptkeulenbreite
+%   (Aufloesungs-Mass), ENBW = aequivalente Rauschbandbreite. Alle drei
+%   werden mit eingebauten Funktionen aus dem Frequenzgang bestimmt.
 
-win = win(:);  N = numel(win);
-m.ENBW = enbw(win);
+win  = win(:);  N = numel(win);
+m.ENBW = enbw(win);                          % aequivalente Rauschbandbreite
 
-Nfft = 65536;
+% Frequenzgang des Fensters, fein aufgeloest durch Zero-Padding
+Nfft = 8192;
 W    = abs(fft(win, Nfft));
-W    = W(1:floor(Nfft/2)+1);
-W    = W / W(1);
-WdB  = 20*log10(W + eps);
-fbin = (0:numel(W)-1).' * N / Nfft;
+W    = W(1:Nfft/2+1);
+fbin = (0:Nfft/2).' * N / Nfft;              % Frequenzachse in FFT-Bins
+WdB  = 20*log10(W/max(W) + eps);             % normiert, Hauptpeak = 0 dB
 
-% erste echte Nullstelle = erstes lokales Minimum (>0.2 Bins von DC);
-% robust auch beim Flat-Top (welliger flacher Scheitel)
-nullidx = [];
-for i = 2:numel(W)-1
-    if W(i) < W(i-1) && W(i) < W(i+1) && fbin(i) > 0.2
-        nullidx = i; break;
-    end
-end
-if ~isempty(nullidx)
-    m.MLW = 2 * fbin(nullidx);
-    m.PSL = max(WdB(nullidx:end));
-else
-    m.MLW = NaN;  m.PSL = NaN;
-end
+% Hoechste Nebenkeule = groesstes lokales Maximum. Der Hauptpeak bei Bin 0
+% ist ein Randpunkt und wird von findpeaks automatisch nicht mitgezaehlt.
+m.PSL = max(findpeaks(WdB));
+
+% Hauptkeulenbreite = 2 x erste Nullstelle (= erstes lokales Minimum).
+% Nur Minima jenseits von 0.5 Bins zaehlen (die Hauptkeule ist stets breiter)
+% -> eine minimale Welligkeit im flachen Scheitel (Flat-Top) stoert nicht.
+nulls = fbin(islocalmin(W));
+nulls = nulls(nulls > 0.5);
+m.MLW = 2 * nulls(1);
 end
 
 % =========================================================================
@@ -482,9 +503,11 @@ end
 end
 
 % =========================================================================
-function plot_waterfall(f, seg_psd, t_seg, window_name)
+function plot_waterfall(f, seg_psd, t_seg, window_name, zmax_common)
 %PLOT_WATERFALL  3D-Wasserfall der Segmentspektren mit HRV-Bandgrenzen.
 %   Jede Linie = Spektrum eines Segments -> zeitliche Stabilitaet sichtbar.
+%   zmax_common (optional) setzt eine fuer alle Fenster einheitliche
+%   z- und Farbskala (Anforderung 2.7 "einheitliche Skalierung").
 
 if nargin < 4 || isempty(window_name), window_name = ''; end
 f   = f(:);
@@ -503,15 +526,22 @@ zlabel('Leistungsdichte [ms^2/Hz]');
 title(sprintf('HRV-Wasserfalldiagramm - Fenster: %s', window_name));
 grid on; box on; view(40, 30);
 
-% Bandgrenzen als senkrechte Ebenen (je 2 Dreiecke -> MATLAB+Octave)
+% Gemeinsames z-Maximum: entweder uebergeben oder aus diesem Diagramm.
+if nargin >= 5 && ~isempty(zmax_common) && isfinite(zmax_common) && zmax_common > 0
+    zmax = zmax_common;
+    zlim([0 zmax]); caxis([0 zmax]);     % einheitliche z- und Farbskala
+else
+    zmax = max(Z(:));
+end
+
+% HRV-Bandgrenzen je als senkrechtes, halbtransparentes Rechteck markieren
+% (Rechteck in der Ebene x = fb, aufgespannt ueber Zeit- und z-Achse).
 hold on;
-zmax = max(Z(:)); if ~isfinite(zmax) || zmax <= 0, zmax = 1; end
+if ~isfinite(zmax) || zmax <= 0, zmax = 1; end
 ymin = min(t_seg); ymax = max(t_seg); if ymax == ymin, ymax = ymin+1; end
 for fb = [0.04 0.15 0.40]
-    patch([fb fb fb], [ymin ymax ymax], [0 0 zmax], [0.3 0.3 0.3], ...
-        'FaceAlpha',0.12, 'EdgeColor',[0.3 0.3 0.3], 'LineStyle','--');
-    patch([fb fb fb], [ymin ymax ymin], [0 zmax zmax], [0.3 0.3 0.3], ...
-        'FaceAlpha',0.12, 'EdgeColor','none');
+    patch([fb fb fb fb], [ymin ymin ymax ymax], [0 zmax zmax 0], ...
+        [0.4 0.4 0.4], 'FaceAlpha',0.12, 'EdgeColor','none');
 end
 hold off;
 end

@@ -114,34 +114,21 @@ function [ecg, fs] = load_ecg_data(filename)
 end
 
 % =========================================================================
-function ecg_filt = preprocess_ecg(ecg, fs, mains_freq)
+function ecg_filt = preprocess_ecg(ecg, fs)
 %PREPROCESS_ECG  Filterung: DC, Baseline-Hochpass, 50-Hz-Notch, Tiefpass.
 %   Alle Filter nullphasig (filtfilt) -> keine Phasenverschiebung, die
 %   R-Zacken werden zeitlich nicht verschoben.
 
-    if nargin < 3 || isempty(mains_freq), mains_freq = 50; end
-    ecg_filt = double(ecg(:));
-
-
     ecg_filt = ecg - mean(ecg);                       % Gleichanteil entfernen
 
-    % Hochpass Filter
-    ecg_filt = highpass(ecg_filt,0.5, fs);
+    ecg_filt = highpass(ecg_filt,0.5, fs);            % High-pass für Entfernen der Baseline-Wanderung
 
-    [bn,an]  = notch_coeffs(mains_freq, fs, 30);      % 3) 50-Hz-Notch
-    ecg_filt = filtfilt(bn, an, ecg_filt);
+    wo = 50/(fs/2);                                   % 50 ist die Frequenz
+    bw = wo/40;                                       % 40 ist die Güte des Filters
+    [b,a] = iirnotch(wo, bw);
+    ecg_filt = filtfilt(b, a, ecg_filt);              % 50 Hz Netzbrummen entfernen
 
-    ecg_filt = lowpass(ecg_filt, 40, fs);                 % 4) Tiefpass Filter
-end
-
-% =========================================================================
-function [b, a] = notch_coeffs(f0, fs, Q)
-%NOTCH_COEFFS  RBJ-Bandstop-Biquad (Kerbfilter), ohne iirnotch.
-    w0    = 2*pi*f0/fs;
-    alpha = sin(w0) / (2*Q);
-    b = [ 1,         -2*cos(w0),  1         ];
-    a = [ 1 + alpha, -2*cos(w0),  1 - alpha ];
-    b = b / a(1);  a = a / a(1);
+    ecg_filt = lowpass(ecg_filt, 40, fs);             % Tiefpass Filter ab 40Hz
 end
 
 % =========================================================================

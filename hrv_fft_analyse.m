@@ -96,15 +96,14 @@ for iw = 1:numel(results)
     plot_waterfall(R.f, R.seg_psd, R.t_seg, R.name, zmax_all);
 end
 
-% Get all open figure handles
-figHandles = findall(0, 'Type', 'figure');
-
-% Name of your single PDF output file
+% Alle offenen Figures als PDF exportieren (eine Figure pro Seite).
 pdfName = 'all_figures.pdf';
+if isfile(pdfName), delete(pdfName); end          % alten Export entfernen (sonst wird angehaengt)
 
-% Loop through and append
-for i = 1:length(figHandles)
-    % Append set to true adds each figure as a new page
+figHandles = findall(0, 'Type', 'figure');
+[~, order] = sort([figHandles.Number]);           % logische Reihenfolge (EKG zuerst)
+figHandles = figHandles(order);
+for i = 1:numel(figHandles)
     exportgraphics(figHandles(i), pdfName, 'Append', true);
 end
 
@@ -164,27 +163,28 @@ end
 % =========================================================================
 function [t_rr, rr, n_artifacts] = calculate_rr_intervals(r_locs, fs)
 %CALCULATE_RR_INTERVALS  RR-Intervalle [ms] mit Plausibilitaetspruefung.
-%   Plausibel = 300-2000 ms UND hoechstens 20 % Abweichung vom lokalen
-%   Median. Unplausible Werte werden per pchip aus den gueltigen Nachbarn
-%   ersetzt.
+%   Als Artefakt gilt: ausserhalb 300-2000 ms ODER statistischer Ausreisser
+%   gegenueber dem gleitenden Median (isoutlier). Solche Werte werden per
+%   pchip aus den gueltigen Nachbarn ersetzt.
 
 r_locs = r_locs(:);
 t_r  = r_locs / fs;
 rr   = diff(t_r) * 1000;       % RR [ms]
 t_rr = t_r(2:end);
 
-% Plausibilitaetspruefung in zwei einfachen Bedingungen:
-%  1) physiologische Grenzen 300-2000 ms (~30-200 bpm),
-%  2) hoechstens 20 % Abweichung vom lokalen Median (gleitendes Fenster
-%     ueber 5 Intervalle) -> faengt einzelne Ausreisser/Extrasystolen.
-local_med = movmedian(rr, 5);
-ok  = (rr > 300) & (rr < 2000);
-ok  = ok & (abs(rr - local_med) < 0.2*local_med);
-bad = ~ok;
+% Plausibilitaetspruefung (beide Schritte mit nativen Funktionen):
+%  1) physiologisch unmoegliche Werte ausserhalb 300-2000 ms (~30-200 bpm),
+%  2) statistische Ausreisser gegenueber dem gleitenden Median
+%     (isoutlier, Methode 'movmedian' ueber 21 Intervalle). Die MAD-basierte
+%     Pruefung passt sich der lokalen Streuung an -> faengt einzelne
+%     verpasste/falsche Schlaege auch in schwankenden Abschnitten.
+implausible = (rr < 300) | (rr > 2000);
+outlier     = isoutlier(rr, 'movmedian', 21);
+bad = implausible | outlier;
 n_artifacts = sum(bad);
 
-if n_artifacts > 0 && sum(ok) >= 2
-    rr(bad) = interp1(t_rr(ok), rr(ok), t_rr(bad), 'pchip', 'extrap');
+if n_artifacts > 0 && sum(~bad) >= 2
+    rr(bad) = interp1(t_rr(~bad), rr(~bad), t_rr(bad), 'pchip', 'extrap');
 end
 
 fprintf(['RR-Intervalle: %d | Artefakte: %d | mittl. RR = %.1f ms ', ...
@@ -371,16 +371,15 @@ W    = W(1:Nfft/2+1);
 fbin = (0:Nfft/2).' * N / Nfft;              % Frequenzachse in FFT-Bins
 WdB  = 20*log10(W/max(W) + eps);             % normiert, Hauptpeak = 0 dB
 
-% Hoechste Nebenkeule = groesstes lokales Maximum. Der Hauptpeak bei Bin 0
-% ist ein Randpunkt und wird von findpeaks automatisch nicht mitgezaehlt.
-m.PSL = max(findpeaks(WdB));
+% Erste Nullstelle = erstes lokales Minimum jenseits von 0.5 Bins (die
+% Hauptkeule ist stets breiter; so stoert eine Welligkeit im flachen
+% Flat-Top-Scheitel nicht).
+nulls     = fbin(islocalmin(W));
+nulls     = nulls(nulls > 0.5);
+firstNull = nulls(1);
 
-% Hauptkeulenbreite = 2 x erste Nullstelle (= erstes lokales Minimum).
-% Nur Minima jenseits von 0.5 Bins zaehlen (die Hauptkeule ist stets breiter)
-% -> eine minimale Welligkeit im flachen Scheitel (Flat-Top) stoert nicht.
-nulls = fbin(islocalmin(W));
-nulls = nulls(nulls > 0.5);
-m.MLW = 2 * nulls(1);
+m.MLW = 2 * firstNull;                       % Hauptkeulenbreite = 2 x erste Nullstelle
+m.PSL = max(WdB(fbin > firstNull));          % hoechste Nebenkeule (alles nach der Hauptkeule)
 end
 
 % =========================================================================

@@ -19,7 +19,7 @@
 clear; clc; close all;
 
 %% ----------------------- Parameter -------------------------------------
-EDF_FILE   = '11-18-37.EDF';
+EDF_FILE   = '16-49-27.EDF';
 FS_INTERP  = 4;       % Resampling-Frequenz des RR-Signals [Hz]
 SEG_LEN_S  = 300;     % Analysefensterlaenge [s] = 5 min
 OVERLAP    = 0.5;     % Segment-Ueberlappung
@@ -40,11 +40,11 @@ sel = t <= 360;
 subplot(2,1,1);
 plot(t(sel), ecg_raw(sel), 'Color', [0.6 0.6 0.6]);
 title('EKG - Rohsignal (erste 10 s)'); ylabel('Amplitude');
-grid on; box on; xlim([190 200]);
+grid on; box on; xlim([10 20]);
 subplot(2,1,2);
 plot(t(sel), ecg(sel), 'Color', [0.85 0.2 0.2]);
 title('EKG - nach Vorverarbeitung'); xlabel('Zeit [s]'); ylabel('Amplitude');
-grid on; box on; xlim([190 200]);
+grid on; box on; xlim([10 20]);
 
 %% --------------------------- 3. R-Zacken -------------------------------
 fprintf('\n=== 3. R-Zacken-Erkennung ===\n');
@@ -131,7 +131,7 @@ function ecg_filt = preprocess_ecg(ecg, fs, mains_freq)
     [bn,an]  = notch_coeffs(mains_freq, fs, 30);      % 3) 50-Hz-Notch
     ecg_filt = filtfilt(bn, an, ecg_filt);
 
-    ecg_filt = lowpass(ecg_filt, 50);                 % 4) Tiefpass Filter
+    ecg_filt = lowpass(ecg_filt, 40, fs);                 % 4) Tiefpass Filter
 end
 
 % =========================================================================

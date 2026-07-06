@@ -19,7 +19,7 @@
 clear; clc; close all;
 
 %% ----------------------- Parameter -------------------------------------
-EDF_FILE   = '11-18-37.EDF';      % '' => synthetische Testdaten
+EDF_FILE   = '11-18-37.EDF';
 FS_INTERP  = 4;       % Resampling-Frequenz des RR-Signals [Hz]
 SEG_LEN_S  = 300;     % Analysefensterlaenge [s] = 5 min
 OVERLAP    = 0.5;     % Segment-Ueberlappung
@@ -120,19 +120,18 @@ function ecg_filt = preprocess_ecg(ecg, fs, mains_freq)
 %   R-Zacken werden zeitlich nicht verschoben.
 
     if nargin < 3 || isempty(mains_freq), mains_freq = 50; end
-    ecg = double(ecg(:));
-    nyq = fs / 2;
+    ecg_filt = double(ecg(:));
 
-    ecg_filt = ecg - mean(ecg);                       % 1) DC entfernen
 
-    [b,a]    = butter(2, 0.5/nyq, 'high');            % 2) Baseline-Hochpass
-    ecg_filt = filtfilt(b, a, ecg_filt);
+    ecg_filt = ecg - mean(ecg);                       % Gleichanteil entfernen
+
+    % Hochpass Filter
+    ecg_filt = highpass(ecg_filt,0.5, fs);
 
     [bn,an]  = notch_coeffs(mains_freq, fs, 30);      % 3) 50-Hz-Notch
     ecg_filt = filtfilt(bn, an, ecg_filt);
 
-    [b,a]    = butter(4, 40/nyq, 'low');              % 4) HF-Rauschen-Tiefpass
-    ecg_filt = filtfilt(b, a, ecg_filt);
+    ecg_filt = lowpass(ecg_filt, 50);                 % 4) Tiefpass Filter
 end
 
 % =========================================================================

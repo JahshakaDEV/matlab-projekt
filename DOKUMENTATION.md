@@ -51,7 +51,7 @@ plot_spectrum / plot_waterfall → Darstellung
 | 2.1 | Roh- + gefiltertes Signal plotten | Skriptteil 2 | `plot`, `subplot` |
 | 2.2 | R-Zacken automatisch erkennen | `detect_r_peaks` | `findpeaks` |
 | 2.2 | RR-Intervalle berechnen | `calculate_rr_intervals`: `diff(t_r)` | `diff` |
-| 2.2 | Fehlerhafte Intervalle erkennen / Plausibilität | `calculate_rr_intervals` (feste Grenzen + lokaler Median) | `movmedian` |
+| 2.2 | Fehlerhafte Intervalle erkennen / Plausibilität | `calculate_rr_intervals` (feste Grenzen + Ausreißer über gleit. Median) | `isoutlier` |
 | 2.2 | R-Peaks markiert + RR-Zeitreihe plotten | Skriptteil 3 + 4 | `plot` |
 | 2.3 | RR-Reihe interpolieren, ~4 Hz | `interpolate_rr_signal` (Spline) | `interp1`, `detrend` |
 | 2.4 | FFT mit ≥ 4 Fenstern | `apply_window_function` + `calculate_fft` | `fft`, `hann`, `hamming`, `blackman`, `kaiser`, `flattopwin` |
@@ -88,10 +88,12 @@ Vier Filterstufen, alle **nullphasig** mit `filtfilt` bzw. den nullphasigen
 
 ### `calculate_rr_intervals(r_locs, fs)`
 - RR-Intervall = zeitlicher Abstand zweier R-Zacken in Millisekunden (`diff`).
-- **Plausibilitätsprüfung** mit zwei einfachen Bedingungen: (a) feste Grenzen
-  300–2000 ms (≈ 30–200 bpm), (b) höchstens 20 % Abweichung vom **lokalen
-  Median** (`movmedian` über 5 Intervalle). So werden Ausreißer/Extrasystolen
-  erkannt.
+- **Plausibilitätsprüfung** mit zwei Bedingungen: (a) feste Grenzen
+  300–2000 ms (≈ 30–200 bpm), (b) statistische Ausreißer gegenüber dem
+  **gleitenden Median** über 21 Intervalle — erkannt mit der nativen Funktion
+  `isoutlier(rr, 'movmedian', 21)`. Diese MAD-basierte Prüfung passt sich der
+  lokalen Streuung an und fängt einzelne verpasste/falsche Schläge auch in
+  schwankenden Abschnitten, ohne echte HRV-Variabilität zu beschneiden.
 - Erkannte Artefakte werden per `interp1(..., 'pchip')` aus den gültigen
   Nachbarn ersetzt und die Anzahl zurückgegeben.
 

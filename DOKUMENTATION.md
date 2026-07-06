@@ -134,11 +134,12 @@ Vergleichsplots und die Konsolentabelle auf.
 ### `window_metrics(win)`
 Kenngrößen jedes Fensters, alle aus dem (durch Zero-Padding fein aufgelösten)
 Frequenzgang des Fensters mit eingebauten Funktionen bestimmt:
-- **PSL** (Peak Side Lobe, dB): höchste Nebenkeule → Maß für Leakage-Unterdrückung.
-  Ermittelt als größtes lokales Maximum: `max(findpeaks(WdB))` (der Hauptpeak bei
-  Bin 0 ist ein Randpunkt und wird von `findpeaks` nicht mitgezählt).
 - **MLW** (Main Lobe Width, Bins): Breite der Hauptkeule → Maß für
-  Frequenzauflösung. = 2 × erste Nullstelle, gefunden mit `islocalmin`.
+  Frequenzauflösung. = 2 × erste Nullstelle, gefunden mit `islocalmin`
+  (nur Minima jenseits von 0,5 Bins, damit der flache Flat-Top-Scheitel nicht stört).
+- **PSL** (Peak Side Lobe, dB): höchste Nebenkeule → Maß für Leakage-Unterdrückung.
+  = Maximum des Frequenzgangs **jenseits der ersten Nullstelle**
+  (`max(WdB(fbin > firstNull))`), also außerhalb der Hauptkeule.
 - **ENBW** (`enbw`): äquivalente Rauschbandbreite.
 
 ### Plot-Funktionen

@@ -371,16 +371,15 @@ W    = W(1:Nfft/2+1);
 fbin = (0:Nfft/2).' * N / Nfft;              % Frequenzachse in FFT-Bins
 WdB  = 20*log10(W/max(W) + eps);             % normiert, Hauptpeak = 0 dB
 
-% Hoechste Nebenkeule = groesstes lokales Maximum. Der Hauptpeak bei Bin 0
-% ist ein Randpunkt und wird von findpeaks automatisch nicht mitgezaehlt.
-m.PSL = max(findpeaks(WdB));
+% Erste Nullstelle = erstes lokales Minimum jenseits von 0.5 Bins (die
+% Hauptkeule ist stets breiter; so stoert eine Welligkeit im flachen
+% Flat-Top-Scheitel nicht).
+nulls     = fbin(islocalmin(W));
+nulls     = nulls(nulls > 0.5);
+firstNull = nulls(1);
 
-% Hauptkeulenbreite = 2 x erste Nullstelle (= erstes lokales Minimum).
-% Nur Minima jenseits von 0.5 Bins zaehlen (die Hauptkeule ist stets breiter)
-% -> eine minimale Welligkeit im flachen Scheitel (Flat-Top) stoert nicht.
-nulls = fbin(islocalmin(W));
-nulls = nulls(nulls > 0.5);
-m.MLW = 2 * nulls(1);
+m.MLW = 2 * firstNull;                       % Hauptkeulenbreite = 2 x erste Nullstelle
+m.PSL = max(WdB(fbin > firstNull));          % hoechste Nebenkeule (alles nach der Hauptkeule)
 end
 
 % =========================================================================

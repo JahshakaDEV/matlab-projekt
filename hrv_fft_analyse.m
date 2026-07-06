@@ -150,7 +150,10 @@ t_r  = r_locs / fs;
 rr   = diff(t_r) * 1000;       % RR [ms]
 t_rr = t_r(2:end);
 
+width_number = 9; % Fensterbreite in Anzahl Intervalle 9 = +- 4 Nachbarn
+local_med = movmedian(rr, width_number); % gleitender Median
 ok  = (rr > 300) & (rr < 2000);
+ok = ok & (abs(rr -local_med) < 0.25*local_med); % 25% Abweichung vom lokalen Median
 med = median(rr(ok));
 ok  = ok & (abs(rr - med) < 0.5*med);
 bad = ~ok;

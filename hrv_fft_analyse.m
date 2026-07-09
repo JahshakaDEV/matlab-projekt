@@ -36,7 +36,7 @@ ecg = preprocess_ecg(ecg_raw, fs);
 
 % Roh- vs. gefiltertes Signal (Ausschnitt 10-20 s)
 figure('Color','w','Position',[100 100 950 500]);
-sel = t <= 30;                                    % nur benoetigten Ausschnitt plotten
+sel = t >= 0;                                    % gesamtes Signal auswaehlen (xlim unten zoomt nur die Ansicht)
 subplot(2,1,1);
 plot(t(sel), ecg_raw(sel), 'Color', [0.6 0.6 0.6]);
 title('EKG - Rohsignal (Ausschnitt 10-20 s)'); ylabel('Amplitude');
@@ -52,7 +52,7 @@ r_locs = detect_r_peaks(ecg, fs);
 
 figure('Color','w','Position',[100 100 950 350]);
 plot(t(sel), ecg(sel), 'k'); hold on;
-r_sel = r_locs(r_locs <= 10*fs);
+r_sel = r_locs;                                  % alle erkannten R-Zacken (xlim unten begrenzt nur die sichtbare Ansicht)
 plot(r_sel/fs, ecg(r_sel), 'ro', 'MarkerFaceColor','r', 'MarkerSize',5);
 title('Erkannte R-Zacken (erste 10 s)');
 xlabel('Zeit [s]'); ylabel('Amplitude');
@@ -154,9 +154,14 @@ end
 
 % =========================================================================
 function locs = detect_r_peaks(ecg, fs)
-schwelle = mean(ecg) + 0.6*std(ecg);
-RR_min_samples = round(0.3*fs);
-[~, locs] = findpeaks(ecg, 'MinPeakHeight', schwelle, 'MinPeakDistance', RR_min_samples);
+%DETECT_R_PEAKS  Automatische R-Zacken-Erkennung mit findpeaks.
+%   Zwei Kriterien: Mindesthoehe (nur deutlich herausragende Spitzen zaehlen
+%   als R-Zacke) und Mindestabstand (physiologisch kein zweiter Schlag < 300 ms).
+
+schwelle       = mean(ecg) + 0.6*std(ecg);        % Schwelle: nur Peaks deutlich ueber dem Mittelwert
+RR_min_samples = round(0.3*fs);                   % 0.3 s Mindestabstand -> schliesst Doppeldetektion aus (max. ~200 bpm)
+[~, locs] = findpeaks(ecg, ...                    % Rueckgabe: Sample-Indizes der Peaks (Amplituden ignoriert)
+    'MinPeakHeight', schwelle, 'MinPeakDistance', RR_min_samples);
 fprintf('R-Zacken erkannt: %d\n', numel(locs));
 end
 
@@ -328,14 +333,13 @@ for iw = 1:numel(windows)
     wname = windows{iw};
     [~, win] = apply_window_function(ones(N,1), wname);
 
-    seg_psd = [];
+    seg_psd = zeros(floor(N/2)+1, nSeg);    % Spektren aller Segmente vorab reservieren (FFT-Laenge = floor(N/2)+1)
     for is = 1:nSeg
-        s0  = starts(is);
-        seg = sig(s0:s0+N-1);
+        s0  = starts(is);                   % Startindex des Segments
+        seg = sig(s0:s0+N-1);               % Segment der Laenge N ausschneiden
         seg = seg - mean(seg);              % lokalen DC abziehen
         [f, psd] = calculate_fft(seg.*win, win, fs_i);
-        if isempty(seg_psd), seg_psd = zeros(numel(f), nSeg); end
-        seg_psd(:, is) = psd;
+        seg_psd(:, is) = psd;               % PSD dieses Segments in Spalte is ablegen
     end
 
     psd_avg = mean(seg_psd, 2);             % Welch-Mittelung
@@ -482,7 +486,9 @@ legend({'VLF (0.0033-0.04 Hz)','LF (0.04-0.15 Hz)','HF (0.15-0.40 Hz)','PSD'}, .
 if nargin >= 4 && ~isempty(hrv)
     txt = sprintf('LF/HF = %.2f\nLF = %.1f ms^2 (%.0f%%)\nHF = %.1f ms^2 (%.0f%%)', ...
         hrv.LF_HF, hrv.LF, hrv.LF_rel, hrv.HF, hrv.HF_rel);
-    text(0.97*fmax, 0.95*ymax, txt, 'HorizontalAlignment','right', ...
+    % Textbox auf halbe Hoehe setzen: die Legende sitzt oben rechts (northeast),
+    % oberhalb der PSD ist die rechte Haelfte leer -> keine Ueberlappung mehr.
+    text(0.97*fmax, 0.55*ymax, txt, 'HorizontalAlignment','right', ...
         'VerticalAlignment','top', 'BackgroundColor','w', ...
         'EdgeColor',[0.6 0.6 0.6], 'FontSize',9);
 end
@@ -528,7 +534,7 @@ grid on; box on; view(40, 30);
 % Gemeinsames z-Maximum: entweder uebergeben oder aus diesem Diagramm.
 if nargin >= 5 && ~isempty(zmax_common) && isfinite(zmax_common) && zmax_common > 0
     zmax = zmax_common;
-    zlim([0 zmax]); caxis([0 zmax]);     % einheitliche z- und Farbskala
+    zlim([0 zmax]); clim([0 zmax]);      % einheitliche z- und Farbskala (clim = aktueller Ersatz fuer caxis)
 else
     zmax = max(Z(:));
 end

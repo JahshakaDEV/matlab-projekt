@@ -1,0 +1,787 @@
+<title>HRV-Analyse: Einfluss der FFT-Fensterfunktionen</title>
+<style>
+  :root{
+    --paper:#eef1f3;
+    --panel:#ffffff;
+    --grid-line: rgba(196,60,54,0.13);
+    --grid-major: rgba(196,60,54,0.22);
+    --ink:#141a22;
+    --ink-soft:#3d4753;
+    --muted:#67727e;
+    --rule:#d3d9df;
+    --accent:#c2352b;
+    --accent-2:#1b63bf;
+    --accent-soft:#f3ded9;
+    --accent-2-soft:#dde9f9;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --paper:#0a0f16;
+      --panel:#0f1620;
+      --grid-line: rgba(255,138,128,0.07);
+      --grid-major: rgba(255,138,128,0.13);
+      --ink:#e8edf3;
+      --ink-soft:#b9c3cd;
+      --muted:#8493a2;
+      --rule:#243040;
+      --accent:#ff6a5c;
+      --accent-2:#6ba1f2;
+      --accent-soft:rgba(255,106,92,0.14);
+      --accent-2-soft:rgba(107,161,242,0.14);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0a0f16;
+    --panel:#0f1620;
+    --grid-line: rgba(255,138,128,0.07);
+    --grid-major: rgba(255,138,128,0.13);
+    --ink:#e8edf3;
+    --ink-soft:#b9c3cd;
+    --muted:#8493a2;
+    --rule:#243040;
+    --accent:#ff6a5c;
+    --accent-2:#6ba1f2;
+    --accent-soft:rgba(255,106,92,0.14);
+    --accent-2-soft:rgba(107,161,242,0.14);
+  }
+  :root[data-theme="light"]{
+    --paper:#eef1f3;
+    --panel:#ffffff;
+    --grid-line: rgba(196,60,54,0.13);
+    --grid-major: rgba(196,60,54,0.22);
+    --ink:#141a22;
+    --ink-soft:#3d4753;
+    --muted:#67727e;
+    --rule:#d3d9df;
+    --accent:#c2352b;
+    --accent-2:#1b63bf;
+    --accent-soft:#f3ded9;
+    --accent-2-soft:#dde9f9;
+  }
+
+  html,body{height:100%;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .viewport{
+    width:100vw;
+    height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .stage{
+    position:relative;
+    width:1280px;
+    height:720px;
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:16px;
+    box-shadow:0 30px 80px -30px rgba(0,0,0,0.35);
+    overflow:hidden;
+    flex:none;
+  }
+
+  .grid-layer{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    background-image:
+      repeating-linear-gradient(0deg, var(--grid-line) 0 1px, transparent 1px 25px),
+      repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 25px),
+      repeating-linear-gradient(0deg, var(--grid-major) 0 1.5px, transparent 1.5px 125px),
+      repeating-linear-gradient(90deg, var(--grid-major) 0 1.5px, transparent 1.5px 125px);
+    z-index:0;
+  }
+
+  .slide{
+    position:absolute;
+    inset:0;
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    padding:46px 76px 40px;
+    opacity:0;
+    visibility:hidden;
+    transition:opacity .4s ease;
+  }
+  .slide.active{ opacity:1; visibility:visible; }
+  @media (prefers-reduced-motion: reduce){
+    .slide{ transition:none; }
+  }
+
+  .eyebrow-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+    border-bottom:1px solid var(--rule);
+    padding-bottom:12px;
+    margin-bottom:28px;
+    flex:none;
+  }
+  .eyebrow-row b{ color:var(--accent); font-weight:600; }
+
+  .slide-body{ flex:1; min-height:0; display:flex; flex-direction:column; }
+
+  h1,h2{ font-family:var(--serif); font-weight:400; color:var(--ink); text-wrap:balance; margin:0; }
+  h2{ font-size:36px; line-height:1.15; margin-bottom:22px; }
+  .kicker{ font-family:var(--mono); font-size:13px; letter-spacing:.08em; color:var(--accent); margin:0 0 10px; text-transform:uppercase; }
+  .lede{ font-size:19px; color:var(--ink-soft); line-height:1.55; max-width:64ch; margin:0 0 20px; }
+
+  .bullets{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:15px; }
+  .bullets li{ position:relative; padding-left:24px; font-size:18px; line-height:1.5; color:var(--ink-soft); }
+  .bullets li::before{ content:""; position:absolute; left:0; top:.6em; width:7px; height:7px; background:var(--accent); }
+  .bullets b{ color:var(--ink); font-weight:600; }
+  .bullets code, .lede code, p code{ font-family:var(--mono); font-size:.88em; background:var(--accent-soft); padding:1px 6px; border-radius:4px; color:var(--ink); }
+
+  .cols-2{ display:grid; grid-template-columns:1fr 1fr; gap:44px; flex:1; min-height:0; }
+  .cols-2-40-60{ display:grid; grid-template-columns:0.85fr 1.15fr; gap:44px; flex:1; min-height:0; }
+  .col-title{ font-family:var(--mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent-2); margin:0 0 12px; }
+
+  .panel{ background:var(--accent-soft); border:1px solid var(--rule); border-radius:10px; padding:16px 18px; }
+  .panel-2{ background:var(--accent-2-soft); border:1px solid var(--rule); border-radius:10px; padding:16px 18px; }
+
+  table{ border-collapse:collapse; width:100%; font-size:15px; }
+  th,td{ text-align:left; padding:9px 14px; border-bottom:1px solid var(--rule); }
+  th{ font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+  td{ color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  td.num, th.num{ text-align:right; font-family:var(--mono); }
+  tr:last-child td{ border-bottom:none; }
+  .table-wrap{ overflow-x:auto; }
+
+  .tag{ display:inline-block; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:3px 9px; border-radius:20px; border:1px solid var(--rule); color:var(--muted); }
+  .tag.warn{ color:var(--accent); border-color:var(--accent); background:var(--accent-soft); }
+
+  /* --- Pipeline flow (Slide: Pipeline) --- */
+  .flow{ display:flex; align-items:stretch; gap:6px; flex-wrap:nowrap; }
+  .flow-step{ flex:1; min-width:0; background:var(--panel); border:1.5px solid var(--rule); border-radius:8px; padding:12px 10px; display:flex; flex-direction:column; gap:6px; }
+  .flow-step .fn{ font-family:var(--mono); font-size:11.5px; color:var(--accent-2); word-break:break-word; }
+  .flow-step .lbl{ font-size:13.5px; color:var(--ink); font-weight:600; }
+  .flow-arrow{ flex:none; align-self:center; color:var(--muted); font-size:16px; }
+  .flow-orchestrator{ margin-top:16px; font-family:var(--mono); font-size:12.5px; color:var(--muted); text-align:center; }
+  .flow-orchestrator b{ color:var(--ink); }
+
+  /* --- sparkline row --- */
+  .win-row{ display:flex; gap:18px; flex:1; }
+  .win-card{ flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--rule); border-radius:10px; padding:14px 10px; }
+  .win-card svg{ width:100%; height:46px; }
+  .win-name{ font-family:var(--mono); font-size:12.5px; color:var(--ink); font-weight:600; }
+  .win-desc{ font-size:12px; color:var(--muted); text-align:center; line-height:1.4; }
+
+  .legend{ display:flex; gap:18px; font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-top:8px; }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .legend i{ width:14px; height:3px; display:inline-block; border-radius:2px; }
+
+  .placeholder-banner{ display:flex; align-items:center; gap:10px; background:var(--accent-soft); border:1px dashed var(--accent); color:var(--accent); font-family:var(--mono); font-size:12.5px; padding:8px 14px; border-radius:8px; margin-bottom:14px; }
+
+  .footer-controls{
+    position:absolute; left:0; right:0; bottom:0;
+    display:flex; align-items:center; justify-content:center; gap:16px;
+    padding:14px 0 10px;
+    z-index:2;
+  }
+  .nav-btn{
+    font-family:var(--mono); font-size:13px; color:var(--muted); background:transparent;
+    border:1px solid var(--rule); border-radius:20px; padding:6px 14px; cursor:pointer;
+  }
+  .nav-btn:hover{ color:var(--ink); border-color:var(--muted); }
+  .nav-btn:focus-visible{ outline:2px solid var(--accent-2); outline-offset:2px; }
+  .dots{ display:flex; gap:6px; }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--rule); border:none; cursor:pointer; padding:0; }
+  .dot.active{ background:var(--accent); }
+  .dot:focus-visible{ outline:2px solid var(--accent-2); outline-offset:2px; }
+  .counter{ font-family:var(--mono); font-size:11.5px; color:var(--muted); min-width:52px; text-align:center; }
+
+  .notes-toggle{
+    position:fixed; right:22px; bottom:20px; z-index:5;
+    font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--muted); background:var(--panel); border:1px solid var(--rule); border-radius:20px;
+    padding:6px 12px; cursor:pointer;
+  }
+  .notes-toggle:hover{ color:var(--ink); }
+  .notes-panel{
+    position:fixed; left:0; right:0; bottom:0; max-height:0; overflow:hidden;
+    background:var(--ink); color:var(--paper); transition:max-height .3s ease; z-index:6;
+  }
+  .notes-panel.open{ max-height:190px; }
+  .notes-inner{ max-width:1100px; margin:0 auto; padding:20px 30px; font-size:15px; line-height:1.55; }
+  .notes-inner .nk{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; opacity:.6; margin-bottom:8px; }
+
+  /* Title slide */
+  .title-slide .slide-body{ justify-content:center; align-items:flex-start; gap:18px; }
+  .title-slide h1{ font-size:46px; line-height:1.16; max-width:16ch; }
+  .title-eyebrow{ font-family:var(--mono); font-size:13px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+  .title-sub{ font-size:19px; color:var(--ink-soft); max-width:56ch; }
+  .title-meta{ font-family:var(--mono); font-size:13px; color:var(--muted); margin-top:8px; }
+  .agenda-strip{ display:flex; gap:28px; margin-top:auto; padding-top:18px; border-top:1px solid var(--rule); }
+  .agenda-strip div{ font-family:var(--mono); font-size:12px; color:var(--muted); }
+  .agenda-strip b{ display:block; color:var(--ink); font-family:var(--sans); font-size:14px; font-weight:600; margin-top:2px; }
+
+  .qa-item{ margin-bottom:16px; }
+  .qa-q{ font-weight:600; color:var(--ink); font-size:17.5px; margin-bottom:4px; }
+  .qa-a{ color:var(--ink-soft); font-size:16px; line-height:1.5; }
+
+  .hero-hint{ font-family:var(--mono); font-size:12px; color:var(--muted); }
+</style>
+
+<div class="viewport">
+  <div class="stage" id="stage">
+    <div class="grid-layer"></div>
+
+    <!-- 0: TITLE -->
+    <section class="slide active title-slide" data-notes="Begrüßung. Thema nennen: Wie beeinflusst die Wahl der FFT-Fensterfunktion die spektrale HRV-Analyse aus EKG-Rohdaten? Kurz ankündigen: Motivation, Umsetzung, Ergebnisse, Bewertung.">
+      <div class="eyebrow-row"><span>DHBW · MATLAB-Projekt</span><b>HRV · FFT-Fensterfunktionen</b></div>
+      <div class="slide-body">
+        <div class="title-eyebrow">Projektpräsentation</div>
+        <h1>Einfluss unterschiedlicher FFT-Fensterfunktionen auf die HRV-Analyse</h1>
+        <div class="title-sub">Spektrale Analyse der Herzratenvariabilität aus EKG-Rohdaten — Vergleich von sechs Fensterfunktionen hinsichtlich Auflösung, Leakage und HRV-Kennwerten.</div>
+        <div class="title-meta">[Name] · [Kurs] · [Datum]</div>
+        <div class="agenda-strip">
+          <div>01<b>Motivation</b></div>
+          <div>02<b>Umsetzung</b></div>
+          <div>03<b>Ergebnisse</b></div>
+          <div>04<b>Bewertung</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 1: MOTIVATION -->
+    <section class="slide" data-notes="HRV kurz erklären: Schwankung der Zeit zwischen Herzschlägen, gesteuert vom autonomen Nervensystem. Diagnostisch relevant über Frequenzbänder. Kernproblem der FFT: endliche, nicht-periodische Segmente erzeugen Leakage. Überleitung zur Fragestellung des Projekts.">
+      <div class="eyebrow-row"><span>01 · Motivation</span><b>Warum Fenster?</b></div>
+      <div class="slide-body">
+        <h2>Warum HRV — und warum Fensterfunktionen?</h2>
+        <ul class="bullets">
+          <li><b>HRV</b> = Schlag-zu-Schlag-Schwankung der Herzfrequenz — gesteuert vom autonomen Nervensystem (Sympathikus/Parasympathikus).</li>
+          <li>Diagnostisch ausgewertet über <b>Frequenzbänder</b>: VLF, LF, HF und das <b>LF/HF-Verhältnis</b>.</li>
+          <li>Problem: Die FFT setzt periodisch fortsetzbare Segmente voraus — reale RR-Segmente sind das nie → <b>Spectral Leakage</b>.</li>
+          <li>Fensterfunktionen reduzieren Leakage, verändern aber selbst Auflösung und Amplitudentreue.</li>
+          <li><b>Leitfrage:</b> Welche Fensterfunktion liefert den verlässlichsten Kompromiss für die HRV-Analyse?</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 2: HINTERGRUND / LEAKAGE -->
+    <section class="slide" data-notes="Grafik erklären: Frequenzgang des Hann-Fensters. Hauptkeule bestimmt die Frequenzauflösung — wie scharf zwei benachbarte Frequenzen trennbar sind. Nebenkeulen sind die Ursache von Leakage: Energie sickert in Nachbarbänder. Trade-off betonen: schmale Hauptkeule vs. niedrige Nebenkeulen lässt sich nicht gleichzeitig optimieren.">
+      <div class="eyebrow-row"><span>01 · Motivation</span><b>Spectral Leakage</b></div>
+      <div class="cols-2-40-60">
+        <div>
+          <h2 style="font-size:30px;">Hauptkeule &amp; Nebenkeule</h2>
+          <ul class="bullets">
+            <li><b>Hauptkeule:</b> zentraler Peak im Frequenzgang → bestimmt die Frequenzauflösung.</li>
+            <li><b>Nebenkeulen:</b> Ausläufer daneben → Ursache für Leakage zwischen Bändern.</li>
+            <li>Schmale Hauptkeule <span class="tag">gute Auflösung</span></li>
+            <li>Niedrige Nebenkeulen <span class="tag">wenig Leakage</span></li>
+            <li>Beides gleichzeitig ist <b>nicht</b> erreichbar — nur verschiebbar.</li>
+          </ul>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;">
+          <svg id="svg-lobes" viewBox="0 0 640 300" style="width:100%;height:auto;"></svg>
+          <div class="hero-hint" style="text-align:center;">Frequenzgang des Hann-Fensters (in Bandbreiten des Fensters), logarithmisch</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3: PIPELINE -->
+    <section class="slide" data-notes="Modularen Aufbau zeigen: jede Verarbeitungsstufe ist eine eigene lokale Funktion. Alle 11 in der Aufgabenstellung geforderten Funktionen sind 1:1 umgesetzt. compare_window_functions orchestriert den gesamten Fenster-Vergleich. Zusatzfunktionen (window_metrics, plot_overlaid_spectra, print_comparison_table) als Eigenleistung erwähnen.">
+      <div class="eyebrow-row"><span>02 · Umsetzung</span><b>Pipeline &amp; Struktur</b></div>
+      <div class="slide-body">
+        <h2>Modularer Aufbau — eine Funktion je Verarbeitungsschritt</h2>
+        <div class="flow">
+          <div class="flow-step"><div class="lbl">EDF laden</div><div class="fn">load_ecg_data()</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="lbl">Vorverarbeitung</div><div class="fn">preprocess_ecg()</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="lbl">R-Zacken</div><div class="fn">detect_r_peaks()</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="lbl">RR-Intervalle</div><div class="fn">calculate_rr_intervals()</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="lbl">Interpolation</div><div class="fn">interpolate_rr_signal()</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="lbl">Fenster + FFT</div><div class="fn">apply_window_function()<br>calculate_fft()</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="lbl">HRV-Bänder</div><div class="fn">calculate_hrv_bands()</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="lbl">Visualisierung</div><div class="fn">plot_spectrum()<br>plot_waterfall()</div></div>
+        </div>
+        <div class="flow-orchestrator">orchestriert über <b>compare_window_functions()</b> — plus Erweiterungen: <b>window_metrics()</b>, <b>plot_overlaid_spectra()</b>, <b>print_comparison_table()</b></div>
+      </div>
+    </section>
+
+    <!-- 4: DATENIMPORT & VORVERARBEITUNG -->
+    <section class="slide" data-notes="EDF-Import erklären: Abtastrate wird aus dem EDF-Header berechnet (NumSamples/DataRecordDuration). Filterkette der Reihe nach durchgehen: Gleichanteil, Hochpass gegen Baseline-Wanderung, Notch gegen 50Hz Netzbrummen, Tiefpass gegen hochfrequentes Rauschen. filtfilt betonen: nullphasig, R-Zacken bleiben zeitlich exakt.">
+      <div class="eyebrow-row"><span>02 · Umsetzung</span><b>Import &amp; Vorverarbeitung</b></div>
+      <div class="cols-2">
+        <div>
+          <div class="col-title">Import</div>
+          <ul class="bullets">
+            <li>EDF-Datensatz, <b>&gt; 1 Stunde</b> Aufzeichnung</li>
+            <li><code>edfinfo</code> / <code>edfread</code></li>
+            <li>Abtastrate aus Header: <code>fs = NumSamples / DataRecordDuration</code></li>
+          </ul>
+        </div>
+        <div>
+          <div class="col-title">Filterkette (alle <code>filtfilt</code> — nullphasig)</div>
+          <ul class="bullets">
+            <li>Gleichanteil entfernen (Mittelwert)</li>
+            <li><b>Hochpass 0.5 Hz</b> — Baseline-Wanderung</li>
+            <li><b>Notch 50 Hz</b> (Q≈40) — Netzbrummen</li>
+            <li><b>Tiefpass 40 Hz</b> — hochfrequentes Rauschen</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5: R-ZACKEN / RR / INTERPOLATION -->
+    <section class="slide" data-notes="R-Zacken-Erkennung: einfache Schwellenwert-Methode auf Basis von Mittelwert und Standardabweichung, mit Mindestabstand gegen Doppeldetektion. RR-Intervalle aus Zeitdifferenzen der R-Zacken, Plausibilitätsprüfung auf physiologisch sinnvolle Werte, Artefakte per pchip ersetzt statt gelöscht — erhält die Zeitreihe lückenlos. Danach: da RR ungleichmäßig verteilt ist, spline-Interpolation auf ein festes 4Hz-Raster als Voraussetzung für die FFT, plus linearer Trendabzug.">
+      <div class="eyebrow-row"><span>02 · Umsetzung</span><b>R-Zacken → RR → Resampling</b></div>
+      <div class="cols-2">
+        <div>
+          <div class="col-title">R-Zacken &amp; RR-Intervalle</div>
+          <ul class="bullets">
+            <li>Schwellenwert: <code>mean + 0.6·std</code>, Mindestabstand 0.3 s</li>
+            <li>RR = Zeitdifferenz aufeinanderfolgender R-Zacken (ms)</li>
+            <li>Plausibilität: 300–2000 ms &amp; Abweichung &lt; 50% vom Median</li>
+            <li>Artefakte → Ersetzung per <b>pchip</b>-Interpolation</li>
+          </ul>
+        </div>
+        <div>
+          <div class="col-title">Gleichmäßiges HRV-Signal</div>
+          <ul class="bullets">
+            <li>RR-Zeitreihe ist <b>ungleichmäßig</b> abgetastet — FFT braucht festes Raster</li>
+            <li><b>Spline-Interpolation</b> auf <code>4 Hz</code></li>
+            <li>Linearer <b>Detrend</b> entfernt Langzeittrend</li>
+            <li>Ergebnis: durchgehendes HRV-Signal, bereit für FFT</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6: FENSTERFUNKTIONEN UEBERSICHT -->
+    <section class="slide" data-notes="Sechs untersuchte Fenster zeigen: vier Pflichtfenster (Rechteck, Hann, Hamming, Blackman) plus zwei optionale (Kaiser, Flat-Top) — beide zusätzlich umgesetzt. Kurz durchgehen: Rechteck = kein Amplitudenverlust an den Rändern aber viel Leakage; Hann/Hamming = guter Kompromiss; Blackman = starke Unterdrückung, breiter; Kaiser = einstellbar über Beta; Flat-Top = für Amplitudengenauigkeit, sehr breite Hauptkeule.">
+      <div class="eyebrow-row"><span>02 · Umsetzung</span><b>Untersuchte Fensterfunktionen</b></div>
+      <div class="slide-body">
+        <h2 style="font-size:30px;">Sechs Fenster im Zeitbereich</h2>
+        <div class="win-row" id="win-row"></div>
+        <div class="legend" style="margin-top:14px;">
+          <span><i style="background:var(--accent);"></i>Pflicht: Rechteck, Hann, Hamming, Blackman</span>
+          <span><i style="background:var(--accent-2);"></i>Optional (zusätzlich umgesetzt): Kaiser (β=8), Flat-Top</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7: METHODIK WELCH -->
+    <section class="slide" data-notes="Welch-Verfahren erklären: Signal wird in überlappende Segmente zerlegt, jedes Segment einzeln gefenstert und per FFT in eine PSD überführt, anschließend werden die PSDs gemittelt. Segmentlänge 300s und 50% Überlappung sind exakt die technischen Mindestvorgaben aus der Aufgabenstellung. Normierung auf die Fensterleistung U erklären: macht die Bandleistung über verschiedene Fenster hinweg vergleichbar, sonst hätte z.B. Flat-Top systematisch andere absolute Werte.">
+      <div class="eyebrow-row"><span>02 · Umsetzung</span><b>Methodik: Welch-Verfahren</b></div>
+      <div class="cols-2">
+        <div>
+          <div class="col-title">Segmentierung (Vorgabe erfüllt)</div>
+          <ul class="bullets">
+            <li>Segmentlänge: <b>300 s = 5 min</b></li>
+            <li>Überlappung: <b>50 %</b></li>
+            <li>Je Segment: DC entfernen → fenstern → FFT → PSD</li>
+            <li>Mittelung aller Segment-PSDs → <b>Welch-Schätzung</b> (weniger Varianz)</li>
+          </ul>
+        </div>
+        <div>
+          <div class="col-title">Leistungsnormierung</div>
+          <ul class="bullets">
+            <li><code>PSD = |FFT(x·w)|² / (fs · U)</code>, mit <code>U = Σ w²</code></li>
+            <li>U kompensiert die unterschiedliche „Energie" jedes Fensters</li>
+            <li>→ Bandleistungen bleiben <b>fensterübergreifend vergleichbar</b></li>
+            <li>Einseitiges Spektrum: innere Bins verdoppelt</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8: FENSTEREIGENSCHAFTEN VERGLEICH -->
+    <section class="slide" data-notes="Überlagerten Frequenzgang zeigen: Rechteck hat die schmalste Hauptkeule aber deutlich sichtbare, langsam abfallende Nebenkeulen. Hann bereits deutlich niedrigere Nebenkeulen. Blackman fast keine sichtbaren Nebenkeulen mehr, dafür breiteste Hauptkeule der drei. Tabelle als Literaturreferenz einordnen, eigene Werte aus print_comparison_table ergänzen.">
+      <div class="eyebrow-row"><span>03 · Ergebnisse</span><b>Fenstereigenschaften im Vergleich</b></div>
+      <div class="cols-2-40-60">
+        <div style="display:flex;flex-direction:column;justify-content:center;">
+          <svg id="svg-compare" viewBox="0 0 640 260" style="width:100%;height:auto;"></svg>
+          <div class="legend" id="compare-legend"></div>
+        </div>
+        <div>
+          <div class="placeholder-banner">Referenzwerte (Literatur) — eigene Messwerte aus <code>print_comparison_table()</code> ergänzen</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Fenster</th><th class="num">PSL [dB]</th><th class="num">ENBW [Bins]</th></tr></thead>
+              <tbody>
+                <tr><td>Rechteck</td><td class="num">−13</td><td class="num">1.00</td></tr>
+                <tr><td>Hann</td><td class="num">−32</td><td class="num">1.50</td></tr>
+                <tr><td>Hamming</td><td class="num">−43</td><td class="num">1.36</td></tr>
+                <tr><td>Blackman</td><td class="num">−58</td><td class="num">1.73</td></tr>
+                <tr><td>Kaiser (β=8)</td><td class="num">≈ −72</td><td class="num">≈ 1.8</td></tr>
+                <tr><td>Flat-Top</td><td class="num">≈ −93</td><td class="num">≈ 3.77</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9: HRV KENNWERTE -->
+    <section class="slide" data-notes="Hier die eigenen Ergebnisse aus dem konkreten EKG-Datensatz einsetzen: absolute und relative VLF/LF/HF-Leistung sowie das LF/HF-Verhältnis, pro Fenster. Erwartung erläutern: bei Fenstern mit starkem Leakage wandert Energie zwischen den Bändern, wodurch sich das LF/HF-Verhältnis verschiebt — das ist genau der Effekt, den die Tabelle sichtbar machen soll.">
+      <div class="eyebrow-row"><span>03 · Ergebnisse</span><b>Einfluss auf HRV-Kennwerte</b></div>
+      <div class="slide-body">
+        <h2 style="font-size:30px;">VLF / LF / HF je Fensterfunktion</h2>
+        <div class="placeholder-banner">Platzhalter — eigene Ergebnisse aus der Konsolen-Tabelle des Skripts einsetzen</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fenster</th><th class="num">VLF [ms²]</th><th class="num">LF [ms²]</th><th class="num">HF [ms²]</th><th class="num">LF/HF</th></tr></thead>
+            <tbody>
+              <tr><td>Rechteck</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+              <tr><td>Hann</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+              <tr><td>Hamming</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+              <tr><td>Blackman</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+              <tr><td>Kaiser</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+              <tr><td>Flat-Top</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10: WATERFALL -->
+    <section class="slide" data-notes="Wasserfalldiagramm erklären: pro Fenster wird für jedes Zeitsegment eine eigene PSD berechnet, alle Segmentspektren hintereinander als 3D-Fläche dargestellt — X=Frequenz, Y=Segment-Startzeit, Z=Leistung. HRV-Bandgrenzen sind als senkrechte Ebenen markiert. Erwartung: schmale Fenster erzeugen unruhigere, verrauschtere Verläufe über die Zeit, breite/dämpfende Fenster glätten die Zeitachse, verlieren aber Frequenzschärfe.">
+      <div class="eyebrow-row"><span>03 · Ergebnisse</span><b>3D-Wasserfalldarstellung</b></div>
+      <div class="cols-2-40-60">
+        <div>
+          <h2 style="font-size:30px;">Spektrale Stabilität über die Zeit</h2>
+          <ul class="bullets">
+            <li>Pro Fenster: eine PSD je Zeitsegment, hintereinander als 3D-Fläche</li>
+            <li>X = Frequenz, Y = Segment-Startzeit, Z = Leistungsdichte</li>
+            <li>HRV-Bandgrenzen (0.04 / 0.15 / 0.40 Hz) als Ebenen markiert</li>
+            <li>Schmale Fenster → <b>unruhigere</b> Zeitverläufe</li>
+            <li>Breite/dämpfende Fenster → glatter, aber gröbere Auflösung</li>
+          </ul>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;">
+          <svg id="svg-waterfall" viewBox="0 0 500 260" style="width:100%;height:auto;"></svg>
+          <div class="hero-hint" style="text-align:center;">Schematische Darstellung — reale Diagramme: <code>plot_waterfall()</code></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11: LEITFRAGEN -->
+    <section class="slide" data-notes="Die drei Leitfragen der Aufgabenstellung direkt beantworten. Bei Frage 2 klar Stellung beziehen und die eigene Empfehlung nennen, aber auf die eigenen Messergebnisse verweisen, um es zu bestätigen.">
+      <div class="eyebrow-row"><span>04 · Bewertung</span><b>Leitfragen beantwortet</b></div>
+      <div class="slide-body">
+        <h2 style="font-size:30px;">Beantwortung der Leitfragen</h2>
+        <div class="qa-item">
+          <div class="qa-q">1. Wie beeinflussen Fenster die HRV-Spektralanalyse?</div>
+          <div class="qa-a">Über den Auflösung/Leakage-Trade-off: schmale Fenster trennen VLF/LF/HF scharf, lassen aber Energie durchsickern; breite Fenster unterdrücken Leakage, verwischen aber die engen Bandgrenzen (LF–HF nur 0.11 Hz auseinander).</div>
+        </div>
+        <div class="qa-item">
+          <div class="qa-q">2. Welcher Kompromiss ist für HRV am geeignetsten?</div>
+          <div class="qa-a"><b>Hann</b> bzw. <b>Hamming</b> als robuster Standard; <b>Kaiser</b> als einstellbare Alternative über β; <b>Rechteck</b> nur als Referenz, <b>Blackman/Flat-Top</b> bei besonders leakage-empfindlichen Fragestellungen.</div>
+        </div>
+        <div class="qa-item">
+          <div class="qa-q">3. Auswirkung auf die 3D-Wasserfalldarstellung?</div>
+          <div class="qa-a">Schmale Fenster zeigen scharfe, aber zeitlich unruhige Spektren; dämpfende Fenster liefern glattere, stabilere Verläufe bei gröberer Frequenzauflösung.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12: FAZIT / GRENZEN / AUSBLICK -->
+    <section class="slide" data-notes="Ehrliche Reflexion ist Teil der Bewertung: konkrete Grenzen benennen statt zu verschweigen. Uneinheitliche Z-Skalierung zwischen den Wasserfalldiagrammen verschiedener Fenster erschwert den direkten visuellen Vergleich — mögliche Erweiterung: gemeinsames Z-Limit. R-Zacken-Erkennung ist ein einfacher Schwellenwert, robuster wäre z.B. Pan-Tompkins bei sehr verrauschten Signalen. Am Ende: Ausblick auf mögliche Erweiterungen nennen.">
+      <div class="eyebrow-row"><span>04 · Bewertung</span><b>Fazit &amp; Ausblick</b></div>
+      <div class="cols-2">
+        <div>
+          <div class="col-title">Fazit</div>
+          <ul class="bullets">
+            <li>Alle 11 geforderten Funktionen + 3 Erweiterungen implementiert</li>
+            <li>Technische Vorgaben erfüllt: 300s-Segmente, 50% Overlap</li>
+            <li>6 Fenster untersucht (4 Pflicht + 2 optional)</li>
+            <li>Fensterwahl beeinflusst LF/HF-Verhältnis <b>messbar</b></li>
+          </ul>
+        </div>
+        <div>
+          <div class="col-title">Grenzen &amp; Ausblick</div>
+          <ul class="bullets">
+            <li>Wasserfalldiagramme: Z-Skalierung noch nicht fensterübergreifend vereinheitlicht</li>
+            <li>R-Zacken-Erkennung: einfacher Schwellenwert statt z.B. Pan-Tompkins</li>
+            <li>Spline-Interpolation extrapoliert an den Rändern</li>
+            <li>Ausblick: Zeitbereich-HRV-Kennwerte, Mehrkanal-EDF-Unterstützung</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 13: FRAGEN -->
+    <section class="slide" data-notes="Abschluss, danken, zu Fragen einladen. Vorbereitete Antworten griffbereit halten: Warum beta=8 bei Kaiser (Kompromiss Hauptkeule/Nebenkeule, gängiger Startwert), warum Welch-Mittelung (Varianzreduktion der PSD-Schätzung), warum Spline statt linear (glattere, physiologisch plausiblere Interpolation der RR-Zeitreihe).">
+      <div class="eyebrow-row"><span>Ende</span><b>Diskussion</b></div>
+      <div class="slide-body" style="justify-content:center;">
+        <h2 style="font-size:42px;">Fragen &amp; Diskussion</h2>
+        <div class="lede">Danke für die Aufmerksamkeit.</div>
+        <div class="panel" style="max-width:70ch;margin-top:12px;">
+          <div class="col-title" style="margin-bottom:10px;">Vorbereitete Rückfragen</div>
+          <ul class="bullets">
+            <li><b>Warum β = 8 beim Kaiser-Fenster?</b> Guter Kompromiss zwischen Hauptkeulenbreite und Nebenkeulendämpfung, gängiger Startwert.</li>
+            <li><b>Warum Welch-Mittelung?</b> Reduziert die Varianz der PSD-Schätzung gegenüber einer einzelnen FFT über das Gesamtsignal.</li>
+            <li><b>Warum Spline- statt linearer Interpolation?</b> Glattere, physiologisch plausiblere Rekonstruktion der RR-Zeitreihe.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <div class="footer-controls">
+      <button class="nav-btn" id="prevBtn" aria-label="Vorherige Folie">←</button>
+      <div class="dots" id="dots"></div>
+      <button class="nav-btn" id="nextBtn" aria-label="Nächste Folie">→</button>
+      <span class="counter" id="counter">01 / 14</span>
+    </div>
+  </div>
+</div>
+
+<button class="notes-toggle" id="notesToggle">Notizen (N)</button>
+<div class="notes-panel" id="notesPanel">
+  <div class="notes-inner">
+    <div class="nk">Sprechernotizen</div>
+    <div id="notesText"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- window functions ---------- */
+  function rectWin(N){ return new Array(N).fill(1); }
+  function hannWin(N){ var a=[]; for(var n=0;n<N;n++) a.push(0.5*(1-Math.cos(2*Math.PI*n/(N-1)))); return a; }
+  function hammingWin(N){ var a=[]; for(var n=0;n<N;n++) a.push(0.54-0.46*Math.cos(2*Math.PI*n/(N-1))); return a; }
+  function blackmanWin(N){ var a=[]; for(var n=0;n<N;n++) a.push(0.42-0.5*Math.cos(2*Math.PI*n/(N-1))+0.08*Math.cos(4*Math.PI*n/(N-1))); return a; }
+  function besselI0(x){ var sum=1, term=1, k=1; while(term>1e-10*sum && k<100){ term*= (x*x)/(4*k*k); sum+=term; k++; } return sum; }
+  function kaiserWin(N,beta){ var M=N-1, a=[]; for(var n=0;n<N;n++){ var r=(2*n/M-1); a.push(besselI0(beta*Math.sqrt(Math.max(0,1-r*r)))/besselI0(beta)); } return a; }
+  function flattopWin(N){
+    var a0=0.21557895,a1=0.41663158,a2=0.277263158,a3=0.083578947,a4=0.006947368, M=N-1, a=[];
+    for(var n=0;n<N;n++){ var x=2*Math.PI*n/M; a.push(a0 - a1*Math.cos(x) + a2*Math.cos(2*x) - a3*Math.cos(3*x) + a4*Math.cos(4*x)); }
+    return a;
+  }
+
+  function dftMagDb(win, Nfft, kMax, step){
+    var N = win.length, out = [];
+    for(var k=0;k<=kMax; k+=step){
+      var re=0, im=0;
+      for(var n=0;n<N;n++){ var ang = -2*Math.PI*k*n/Nfft; re += win[n]*Math.cos(ang); im += win[n]*Math.sin(ang); }
+      out.push({bin:k*N/Nfft, mag:Math.sqrt(re*re+im*im)});
+    }
+    var m0 = out[0].mag;
+    return out.map(function(p){ return {bin:p.bin, db: 20*Math.log10(Math.max(p.mag/m0,1e-6)) }; });
+  }
+
+  function pathFromSeries(series, xMax, dbMin, dbMax, w, h, padL, padT){
+    var pts = series.map(function(p){
+      var x = padL + (p.bin/xMax)*(w-padL-10);
+      var db = Math.max(dbMin, Math.min(dbMax, p.db));
+      var y = padT + (dbMax-db)/(dbMax-dbMin)*(h-padT-24);
+      return x.toFixed(2)+","+y.toFixed(2);
+    });
+    return "M"+pts.join(" L");
+  }
+
+  /* ---------- Slide 2: Hauptkeule / Nebenkeule ---------- */
+  function drawLobes(){
+    var svg = document.getElementById('svg-lobes');
+    var N=64, Nfft=8192, kMax=8;
+    var series = dftMagDb(hannWin(N), Nfft, kMax, 0.02);
+    var W=640,H=300,padL=46,padT=18;
+    var dbMin=-90, dbMax=0;
+    var path = pathFromSeries(series, kMax, dbMin, dbMax, W, H, padL, padT);
+
+    var gridlines="";
+    [0,-20,-40,-60,-80].forEach(function(db){
+      var y = padT + (dbMax-db)/(dbMax-dbMin)*(H-padT-24);
+      gridlines += '<line x1="'+padL+'" x2="'+(W-10)+'" y1="'+y.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="var(--rule)" stroke-width="1"/>';
+      gridlines += '<text x="'+(padL-8)+'" y="'+(y+4).toFixed(1)+'" font-family="var(--mono)" font-size="10" fill="var(--muted)" text-anchor="end">'+db+'</text>';
+    });
+    var axisX = '<line x1="'+padL+'" x2="'+(W-10)+'" y1="'+(H-24)+'" y2="'+(H-24)+'" stroke="var(--rule)" stroke-width="1"/>';
+
+    // find first null then first sidelobe peak (search index range)
+    var firstNullIdx=-1;
+    for(var i=2;i<series.length-1;i++){
+      if(series[i].db < series[i-1].db && series[i].db < series[i+1].db){ firstNullIdx=i; break; }
+    }
+    var sideIdx = firstNullIdx>0 ? firstNullIdx+8 : 100;
+    sideIdx = Math.min(sideIdx, series.length-1);
+
+    function xy(idx){
+      var p=series[idx];
+      var x = padL + (p.bin/kMax)*(W-padL-10);
+      var db = Math.max(dbMin, Math.min(dbMax, p.db));
+      var y = padT + (dbMax-db)/(dbMax-dbMin)*(H-padT-24);
+      return [x,y];
+    }
+    var mainXY = xy(0);
+    var sideXY = xy(sideIdx);
+
+    var callouts =
+      '<circle cx="'+mainXY[0]+'" cy="'+mainXY[1]+'" r="3.5" fill="var(--accent)"/>' +
+      '<line x1="'+mainXY[0]+'" y1="'+mainXY[1]+'" x2="'+(mainXY[0]+40)+'" y2="'+(mainXY[1]-34)+'" stroke="var(--muted)" stroke-width="1"/>' +
+      '<text x="'+(mainXY[0]+44)+'" y="'+(mainXY[1]-30)+'" font-family="var(--sans)" font-size="13.5" fill="var(--ink)">Hauptkeule</text>' +
+      '<circle cx="'+sideXY[0]+'" cy="'+sideXY[1]+'" r="3.5" fill="var(--accent-2)"/>' +
+      '<line x1="'+sideXY[0]+'" y1="'+sideXY[1]+'" x2="'+(sideXY[0]+34)+'" y2="'+(sideXY[1]-40)+'" stroke="var(--muted)" stroke-width="1"/>' +
+      '<text x="'+(sideXY[0]+38)+'" y="'+(sideXY[1]-36)+'" font-family="var(--sans)" font-size="13.5" fill="var(--ink)">Nebenkeule</text>';
+
+    svg.innerHTML = gridlines + axisX +
+      '<path d="'+path+'" fill="none" stroke="var(--accent)" stroke-width="2.5"/>' + callouts;
+  }
+
+  /* ---------- Slide 6: sparkline row ---------- */
+  function drawWinRow(){
+    var defs = [
+      {name:'rect', label:'Rechteck', win:rectWin(48), desc:'Keine Dämpfung — schmalste Hauptkeule, stärkstes Leakage'},
+      {name:'hann', label:'Hann', win:hannWin(48), desc:'Ausgewogener Standard — guter Kompromiss'},
+      {name:'hamming', label:'Hamming', win:hammingWin(48), desc:'Niedrige erste Nebenkeule, langsamer Abfall'},
+      {name:'blackman', label:'Blackman', win:blackmanWin(48), desc:'Starke Leakage-Unterdrückung, breiter'},
+      {name:'kaiser', label:'Kaiser (β=8)', win:kaiserWin(48,8), desc:'Einstellbarer Kompromiss über β'},
+      {name:'flattop', label:'Flat-Top', win:flattopWin(48), desc:'Amplitudengenau, sehr breite Hauptkeule'}
+    ];
+    var row = document.getElementById('win-row');
+    row.innerHTML = defs.map(function(d){
+      var pts = d.win.map(function(v,n){
+        var x = (n/(d.win.length-1))*116+2;
+        var y = 40 - Math.max(0,Math.min(1,v))*34;
+        return x.toFixed(1)+","+y.toFixed(1);
+      }).join(" L");
+      return '<div class="win-card">' +
+        '<svg viewBox="0 0 120 44"><polyline points="'+pts.replace(/L/g,'')+'" fill="none" stroke="var(--accent)" stroke-width="2"/></svg>' +
+        '<div class="win-name">'+d.label+'</div>' +
+        '<div class="win-desc">'+d.desc+'</div>' +
+        '</div>';
+    }).join("");
+  }
+
+  /* ---------- Slide 8: overlay comparison ---------- */
+  function drawCompare(){
+    var svg = document.getElementById('svg-compare');
+    var N=64, Nfft=8192, kMax=8;
+    var sets = [
+      {name:'Rechteck', win:rectWin(N), color:'var(--muted)'},
+      {name:'Hann', win:hannWin(N), color:'var(--accent-2)'},
+      {name:'Blackman', win:blackmanWin(N), color:'var(--accent)'}
+    ];
+    var W=640,H=260,padL=46,padT=16, dbMin=-90, dbMax=0;
+    var gridlines="";
+    [0,-20,-40,-60,-80].forEach(function(db){
+      var y = padT + (dbMax-db)/(dbMax-dbMin)*(H-padT-24);
+      gridlines += '<line x1="'+padL+'" x2="'+(W-10)+'" y1="'+y.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="var(--rule)" stroke-width="1"/>';
+      gridlines += '<text x="'+(padL-8)+'" y="'+(y+4).toFixed(1)+'" font-family="var(--mono)" font-size="10" fill="var(--muted)" text-anchor="end">'+db+'</text>';
+    });
+    var axisX = '<line x1="'+padL+'" x2="'+(W-10)+'" y1="'+(H-24)+'" y2="'+(H-24)+'" stroke="var(--rule)" stroke-width="1"/>';
+
+    var paths = sets.map(function(s){
+      var series = dftMagDb(s.win, Nfft, kMax, 0.02);
+      var d = pathFromSeries(series, kMax, dbMin, dbMax, W, H, padL, padT);
+      return '<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2.2"/>';
+    }).join("");
+
+    svg.innerHTML = gridlines + axisX + paths;
+
+    document.getElementById('compare-legend').innerHTML = sets.map(function(s){
+      return '<span><i style="background:'+s.color+';"></i>'+s.name+'</span>';
+    }).join("");
+  }
+
+  /* ---------- Slide 10: schematic waterfall ---------- */
+  function drawWaterfall(){
+    var svg = document.getElementById('svg-waterfall');
+    var layers=7, W=500,H=260;
+    var paths="";
+    for(var L=0; L<layers; L++){
+      var t = L/(layers-1);
+      var yOff = 40 + t*160;
+      var xOff = t*36;
+      var opacity = 0.35 + t*0.55;
+      var pts=[];
+      for(var i=0;i<=40;i++){
+        var xf = i/40;
+        var envelope = Math.exp(-3.2*xf) + 0.18*Math.exp(-3*Math.pow(xf-0.32,2)) + 0.10*Math.exp(-6*Math.pow(xf-0.6,2));
+        var noise = (L%2===0?1:-1) * 0.02*Math.sin(xf*40+L);
+        var val = Math.max(0, envelope + noise);
+        var x = 20 + xOff + xf*(W-120-xOff);
+        var y = yOff - val*70;
+        pts.push(x.toFixed(1)+","+y.toFixed(1));
+      }
+      var color = "color-mix(in srgb, var(--accent) "+Math.round(30+t*60)+"%, var(--accent-2))";
+      paths += '<polyline points="'+pts.join(" ")+'" fill="none" stroke="'+color+'" stroke-width="2" opacity="'+opacity.toFixed(2)+'"/>';
+    }
+    svg.innerHTML = paths;
+  }
+
+  /* ---------- navigation ---------- */
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var dotsWrap = document.getElementById('dots');
+  var counter = document.getElementById('counter');
+  var notesText = document.getElementById('notesText');
+  var current = 0;
+
+  slides.forEach(function(s, i){
+    var b = document.createElement('button');
+    b.className = 'dot' + (i===0 ? ' active':'');
+    b.setAttribute('aria-label', 'Folie '+(i+1));
+    b.addEventListener('click', function(){ show(i); });
+    dotsWrap.appendChild(b);
+  });
+  var dots = Array.prototype.slice.call(dotsWrap.children);
+
+  function pad2(n){ return (n<10?'0':'')+n; }
+
+  function show(i){
+    i = Math.max(0, Math.min(slides.length-1, i));
+    slides.forEach(function(s, idx){ s.classList.toggle('active', idx===i); });
+    dots.forEach(function(d, idx){ d.classList.toggle('active', idx===i); });
+    counter.textContent = pad2(i+1) + ' / ' + pad2(slides.length);
+    notesText.textContent = slides[i].getAttribute('data-notes') || '';
+    current = i;
+  }
+
+  document.getElementById('prevBtn').addEventListener('click', function(){ show(current-1); });
+  document.getElementById('nextBtn').addEventListener('click', function(){ show(current+1); });
+
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight' || e.key===' '){ e.preventDefault(); show(current+1); }
+    else if(e.key==='ArrowLeft'){ e.preventDefault(); show(current-1); }
+    else if(e.key.toLowerCase()==='n'){ toggleNotes(); }
+  });
+
+  var notesPanel = document.getElementById('notesPanel');
+  function toggleNotes(){ notesPanel.classList.toggle('open'); }
+  document.getElementById('notesToggle').addEventListener('click', toggleNotes);
+
+  /* ---------- scaling ---------- */
+  function fit(){
+    var stage = document.getElementById('stage');
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var scale = Math.min(vw/1280, vh/720) * 0.94;
+    stage.style.transform = 'scale('+scale+')';
+  }
+  window.addEventListener('resize', fit);
+
+  /* ---------- init ---------- */
+  drawLobes();
+  drawWinRow();
+  drawCompare();
+  drawWaterfall();
+  show(0);
+  fit();
+})();
+</script>

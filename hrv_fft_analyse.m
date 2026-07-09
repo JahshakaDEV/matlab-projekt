@@ -10,8 +10,6 @@
 %    compare_window_functions ( apply_window_function, calculate_fft,
 %    calculate_hrv_bands ) -> plot_spectrum / plot_waterfall
 %
-%  Bedienung:
-%    * EDF_FILE = 'pfad.edf' : eigene Aufzeichnung.
 %
 %  Benoetigt: Signal Processing Toolbox.
 %  ========================================================================
@@ -26,6 +24,8 @@ OVERLAP    = 0.5;     % Segment-Ueberlappung
 WINDOWS    = {'rect','hann','hamming','blackman','kaiser','flattop'};
 
 %% --------------------------- 1. EKG laden ------------------------------
+% Aufgabe 2.1
+
 fprintf('=== 1. EKG-Daten laden ===\n');
 [ecg_raw, fs] = load_ecg_data(EDF_FILE);
 t = (0:numel(ecg_raw)-1).' / fs;
@@ -47,6 +47,8 @@ title('EKG - nach Vorverarbeitung (Ausschnitt 10-20 s)'); xlabel('Zeit [s]'); yl
 grid on; box on; xlim([10 20]);
 
 %% --------------------------- 3. R-Zacken -------------------------------
+% Aufgabe 2.2
+
 fprintf('\n=== 3. R-Zacken-Erkennung ===\n');
 r_locs = detect_r_peaks(ecg, fs);
 
@@ -54,7 +56,7 @@ figure('Color','w','Position',[100 100 950 350]);
 plot(t(sel), ecg(sel), 'k'); hold on;
 r_sel = r_locs;                                  % alle erkannten R-Zacken (xlim unten begrenzt nur die sichtbare Ansicht)
 plot(r_sel/fs, ecg(r_sel), 'ro', 'MarkerFaceColor','r', 'MarkerSize',5);
-title('Erkannte R-Zacken (erste 10 s)');
+title('Erkannte R-Zacken');
 xlabel('Zeit [s]'); ylabel('Amplitude');
 legend({'EKG','R-Zacken'}, 'Location','northeast');
 grid on; box on; xlim([0 10]); hold off;
@@ -71,10 +73,13 @@ xlabel('Zeit [s]'); ylabel('RR-Intervall [ms]');
 grid on; box on; hold off;
 
 %% ------------------------- 5. Interpolation ----------------------------
+% Aufgabe 2.3
+
 fprintf('\n=== 5. Interpolation (Resampling) ===\n');
 [~, sig, fs_i] = interpolate_rr_signal(t_rr, rr, FS_INTERP);
 
 %% ----------------------- 6. Fenstervergleich ---------------------------
+% Aufgabe 2.4
 fprintf('\n=== 6. Vergleich der Fensterfunktionen ===\n');
 results = compare_window_functions(sig, fs_i, WINDOWS, SEG_LEN_S, OVERLAP);
 

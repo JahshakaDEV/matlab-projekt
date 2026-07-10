@@ -1,42 +1,41 @@
 %% ========================================================================
-%  HRV-ANALYSE: EINFLUSS UNTERSCHIEDLICHER FFT-FENSTERFUNKTIONEN
+%  HRV ANALYSIS: INFLUENCE OF DIFFERENT FFT WINDOW FUNCTIONS
 %  ------------------------------------------------------------------------
-%  Modularer Aufbau: alle Teilschritte sind als eigene (lokale) Funktionen
-%  am Ende der Datei umgesetzt.
+%  Modular layout: every processing step is implemented as its own (local)
+%  function at the end of this file.
 %
-%  Verarbeitungskette:
+%  Processing chain:
 %    load_ecg_data -> preprocess_ecg -> detect_r_peaks ->
 %    calculate_rr_intervals -> interpolate_rr_signal ->
 %    compare_window_functions ( apply_window_function, calculate_fft,
 %    calculate_hrv_bands ) -> plot_spectrum / plot_waterfall
 %
-%
-%  Benoetigt: Signal Processing Toolbox.
+%  Requires: Signal Processing Toolbox.
 %  ========================================================================
 
 clear; clc; close all;
 
-%% ----------------------- Parameter -------------------------------------
+%% ----------------------- Parameters ------------------------------------
 EDF_FILE   = '16-49-27.EDF';
-FS_INTERP  = 4;       % Resampling-Frequenz des RR-Signals [Hz]
-SEG_LEN_S  = 300;     % Analysefensterlaenge [s] = 5 min
-OVERLAP    = 0.5;     % Segment-Ueberlappung
+FS_INTERP  = 4;       % resampling frequency of the RR signal [Hz]
+SEG_LEN_S  = 300;     % analysis window length [s] = 5 min
+OVERLAP    = 0.5;     % segment overlap
 WINDOWS    = {'rect','hann','hamming','blackman','kaiser','flattop'};
 
-%% --------------------------- 1. EKG laden ------------------------------
-% Aufgabe 2.1
+%% --------------------------- 1. Load ECG -------------------------------
+% Task 2.1
 
 fprintf('=== 1. EKG-Daten laden ===\n');
 [ecg_raw, fs] = load_ecg_data(EDF_FILE);
 t = (0:numel(ecg_raw)-1).' / fs;
 
-%% ------------------------ 2. Vorverarbeitung ---------------------------
+%% ------------------------ 2. Preprocessing -----------------------------
 fprintf('\n=== 2. Vorverarbeitung ===\n');
 ecg = preprocess_ecg(ecg_raw, fs);
 
-% Roh- vs. gefiltertes Signal (Ausschnitt 10-20 s)
+% Raw vs. filtered signal (excerpt 10-20 s)
 figure('Color','w','Position',[100 100 950 500]);
-sel = t >= 0;                                    % gesamtes Signal auswaehlen (xlim unten zoomt nur die Ansicht)
+sel = t >= 0;                                    % select the whole signal (xlim below only zooms the view)
 subplot(2,1,1);
 plot(t(sel), ecg_raw(sel), 'Color', [0.6 0.6 0.6]);
 title('EKG - Rohsignal (Ausschnitt 10-20 s)'); ylabel('Amplitude');
@@ -46,22 +45,22 @@ plot(t(sel), ecg(sel), 'Color', [0.85 0.2 0.2]);
 title('EKG - nach Vorverarbeitung (Ausschnitt 10-20 s)'); xlabel('Zeit [s]'); ylabel('Amplitude');
 grid on; box on; xlim([10 20]);
 
-%% --------------------------- 3. R-Zacken -------------------------------
-% Aufgabe 2.2
+%% --------------------------- 3. R peaks --------------------------------
+% Task 2.2
 
 fprintf('\n=== 3. R-Zacken-Erkennung ===\n');
 r_locs = detect_r_peaks(ecg, fs);
 
 figure('Color','w','Position',[100 100 950 350]);
 plot(t(sel), ecg(sel), 'k'); hold on;
-r_sel = r_locs;                                  % alle erkannten R-Zacken (xlim unten begrenzt nur die sichtbare Ansicht)
+r_sel = r_locs;                                  % all detected R peaks (xlim below only limits the visible view)
 plot(r_sel/fs, ecg(r_sel), 'ro', 'MarkerFaceColor','r', 'MarkerSize',5);
 title('Erkannte R-Zacken');
 xlabel('Zeit [s]'); ylabel('Amplitude');
 legend({'EKG','R-Zacken'}, 'Location','northeast');
 grid on; box on; xlim([0 10]); hold off;
 
-%% ------------------------- 4. RR-Intervalle ----------------------------
+%% ------------------------- 4. RR intervals -----------------------------
 fprintf('\n=== 4. RR-Intervalle + Artefaktkorrektur ===\n');
 [t_rr, rr, n_art] = calculate_rr_intervals(r_locs, fs);
 
@@ -73,21 +72,21 @@ xlabel('Zeit [s]'); ylabel('RR-Intervall [ms]');
 grid on; box on; hold off;
 
 %% ------------------------- 5. Interpolation ----------------------------
-% Aufgabe 2.3
+% Task 2.3
 
 fprintf('\n=== 5. Interpolation (Resampling) ===\n');
 [~, sig, fs_i] = interpolate_rr_signal(t_rr, rr, FS_INTERP);
 
-%% ----------------------- 6. Fenstervergleich ---------------------------
-% Aufgabe 2.4
+%% ----------------------- 6. Window comparison --------------------------
+% Task 2.4
 fprintf('\n=== 6. Vergleich der Fensterfunktionen ===\n');
 results = compare_window_functions(sig, fs_i, WINDOWS, SEG_LEN_S, OVERLAP);
 
-%% --------------------- 7. Einzeldarstellungen --------------------------
+%% --------------------- 7. Individual plots -----------------------------
 fprintf('\n=== 7. Einzelspektren und Wasserfalldiagramme ===\n');
 
-% Gemeinsames z-Maximum ueber alle Fenster (Anforderung 2.7: einheitliche
-% Skalierung -> alle Wasserfalldiagramme werden vergleichbar).
+% Common z maximum across all windows (requirement 2.7: uniform scaling ->
+% all waterfall diagrams become comparable).
 zmax_all = 0;
 for iw = 1:numel(results)
     sel_f  = results(iw).f <= 0.5;
@@ -101,12 +100,12 @@ for iw = 1:numel(results)
     plot_waterfall(R.f, R.seg_psd, R.t_seg, R.name, zmax_all);
 end
 
-% Alle offenen Figures als PDF exportieren (eine Figure pro Seite).
+% Export all open figures to a PDF (one figure per page).
 pdfName = 'all_figures.pdf';
-if isfile(pdfName), delete(pdfName); end          % alten Export entfernen (sonst wird angehaengt)
+if isfile(pdfName), delete(pdfName); end          % remove the old export (otherwise pages are appended)
 
 figHandles = findall(0, 'Type', 'figure');
-[~, order] = sort([figHandles.Number]);           % logische Reihenfolge (EKG zuerst)
+[~, order] = sort([figHandles.Number]);           % logical order (ECG first)
 figHandles = figHandles(order);
 for i = 1:numel(figHandles)
     exportgraphics(figHandles(i), pdfName, 'Append', true);
@@ -116,19 +115,27 @@ fprintf('\n=== Analyse abgeschlossen ===\n');
 
 
 %% ========================================================================
-%  LOKALE FUNKTIONEN
+%  LOCAL FUNCTIONS
 %  ========================================================================
 
 % =========================================================================
 function [ecg, fs] = load_ecg_data(filename)
-%LOAD_ECG_DATA  Liest ein EKG aus einer EDF-Datei.
+%LOAD_ECG_DATA  Read an ECG signal and its sampling rate from an EDF file.
+%   [ECG, FS] = LOAD_ECG_DATA(FILENAME) reads the sampling rate from the
+%   EDF header and joins the record blocks of the first signal channel into
+%   one continuous vector.
+%
+%   Input:
+%     FILENAME - path/name of the EDF file, e.g. '16-49-27.EDF'.
+%
+%   Output:
+%     ECG - raw ECG signal as a double column vector.
+%     FS  - sampling rate in Hz, derived from the header.
 
-% Abtastrate aus dem EDF-Header
 info   = edfinfo(filename);
 recDur = seconds(info.DataRecordDuration);
 fs     = double(info.NumSamples(1)) / recDur;
 
-% Signaldaten (erster Kanal) zu einem durchgehenden Vektor zusammenfuegen
 tt    = edfread(filename);
 vname = tt.Properties.VariableNames{1};
 col   = tt.(vname);
@@ -141,53 +148,77 @@ end
 
 % =========================================================================
 function ecg_filt = preprocess_ecg(ecg, fs)
-%PREPROCESS_ECG  Filterung: DC, Baseline-Hochpass, 50-Hz-Notch, Tiefpass.
-%   Alle Filter nullphasig (filtfilt) -> keine Phasenverschiebung, die
-%   R-Zacken werden zeitlich nicht verschoben.
+%PREPROCESS_ECG  Remove DC, baseline drift, 50 Hz hum and high-frequency noise.
+%   ECG_FILT = PREPROCESS_ECG(ECG, FS) applies, in this order, DC removal, a
+%   0.5 Hz high-pass, a 50 Hz notch and a 40 Hz low-pass. All filters are
+%   zero-phase (filtfilt), so the R peaks are not shifted in time.
+%
+%   Input:
+%     ECG - raw ECG signal (vector).
+%     FS  - sampling rate of ECG in Hz.
+%
+%   Output:
+%     ECG_FILT - filtered ECG, same length as ECG.
 
-ecg_filt = ecg - mean(ecg);                       % Gleichanteil entfernen
+ecg_filt = ecg - mean(ecg);
+ecg_filt = highpass(ecg_filt,0.5, fs);
 
-ecg_filt = highpass(ecg_filt,0.5, fs);            % High-pass für Entfernen der Baseline-Wanderung
-
-wo = 50/(fs/2);                                   % 50 ist die Frequenz
-bw = wo/40;                                       % 40 ist die Güte des Filters
+wo = 50/(fs/2);
+bw = wo/40;                                       % Q = 40
 [b,a] = iirnotch(wo, bw);
-ecg_filt = filtfilt(b, a, ecg_filt);              % 50 Hz Netzbrummen entfernen
+ecg_filt = filtfilt(b, a, ecg_filt);
 
-ecg_filt = lowpass(ecg_filt, 40, fs);             % Tiefpass Filter ab 40Hz
+ecg_filt = lowpass(ecg_filt, 40, fs);
 end
 
 % =========================================================================
 function locs = detect_r_peaks(ecg, fs)
-%DETECT_R_PEAKS  Automatische R-Zacken-Erkennung mit findpeaks.
-%   Zwei Kriterien: Mindesthoehe (nur deutlich herausragende Spitzen zaehlen
-%   als R-Zacke) und Mindestabstand (physiologisch kein zweiter Schlag < 300 ms).
+%DETECT_R_PEAKS  Locate the R peaks of an ECG with findpeaks.
+%   LOCS = DETECT_R_PEAKS(ECG, FS) accepts a peak only if it satisfies two
+%   criteria: a minimum height (so only clearly protruding peaks count as an
+%   R peak) and a minimum distance (physiologically there is no second beat
+%   within 300 ms).
+%
+%   Input:
+%     ECG - preprocessed ECG signal (vector).
+%     FS  - sampling rate of ECG in Hz.
+%
+%   Output:
+%     LOCS - sample indices of the detected R peaks.
 
-schwelle       = mean(ecg) + 0.6*std(ecg);        % Schwelle: nur Peaks deutlich ueber dem Mittelwert
-RR_min_samples = round(0.3*fs);                   % 0.3 s Mindestabstand -> schliesst Doppeldetektion aus (max. ~200 bpm)
-[~, locs] = findpeaks(ecg, ...                    % Rueckgabe: Sample-Indizes der Peaks (Amplituden ignoriert)
+schwelle       = mean(ecg) + 0.6*std(ecg);
+RR_min_samples = round(0.3*fs);                   % 0.3 s -> upper limit of ~200 bpm
+[~, locs] = findpeaks(ecg, ...
     'MinPeakHeight', schwelle, 'MinPeakDistance', RR_min_samples);
 fprintf('R-Zacken erkannt: %d\n', numel(locs));
 end
 
 % =========================================================================
 function [t_rr, rr, n_artifacts] = calculate_rr_intervals(r_locs, fs)
-%CALCULATE_RR_INTERVALS  RR-Intervalle [ms] mit Plausibilitaetspruefung.
-%   Als Artefakt gilt: ausserhalb 300-2000 ms ODER statistischer Ausreisser
-%   gegenueber dem gleitenden Median (isoutlier). Solche Werte werden per
-%   pchip aus den gueltigen Nachbarn ersetzt.
+%CALCULATE_RR_INTERVALS  Derive RR intervals from R peaks and repair artefacts.
+%   [T_RR, RR, N_ARTIFACTS] = CALCULATE_RR_INTERVALS(R_LOCS, FS) computes the
+%   beat-to-beat distances and flags a value as an artefact if it lies outside
+%   300-2000 ms OR is a statistical outlier with respect to the moving median
+%   (isoutlier). Flagged values are replaced by pchip interpolation from their
+%   valid neighbours.
+%
+%   Input:
+%     R_LOCS - sample indices of the R peaks (see DETECT_R_PEAKS).
+%     FS     - sampling rate the indices refer to, in Hz.
+%
+%   Output:
+%     T_RR        - time stamp of each interval in s (that of the later beat).
+%     RR          - RR intervals in ms, artefacts already corrected.
+%     N_ARTIFACTS - number of corrected values.
 
 r_locs = r_locs(:);
 t_r  = r_locs / fs;
-rr   = diff(t_r) * 1000;       % RR [ms]
+rr   = diff(t_r) * 1000;       % [ms]
 t_rr = t_r(2:end);
 
-% Plausibilitaetspruefung (beide Schritte mit nativen Funktionen):
-%  1) physiologisch unmoegliche Werte ausserhalb 300-2000 ms (~30-200 bpm),
-%  2) statistische Ausreisser gegenueber dem gleitenden Median
-%     (isoutlier, Methode 'movmedian' ueber 21 Intervalle). Die MAD-basierte
-%     Pruefung passt sich der lokalen Streuung an -> faengt einzelne
-%     verpasste/falsche Schlaege auch in schwankenden Abschnitten.
+% 300-2000 ms corresponds to ~30-200 bpm. The MAD-based movmedian check on top
+% of it adapts to the local spread, so it also catches single missed/false
+% beats in passages where the rate itself fluctuates.
 implausible = (rr < 300) | (rr > 2000);
 outlier     = isoutlier(rr, 'movmedian', 21);
 bad = implausible | outlier;
@@ -204,9 +235,21 @@ end
 
 % =========================================================================
 function [t_u, sig, fs_i] = interpolate_rr_signal(t_rr, rr, fs_i)
-%INTERPOLATE_RR_SIGNAL  RR-Reihe auf gleichmaessiges Raster (Spline).
-%   Die FFT setzt gleichmaessige Abtastung voraus; die RR-Werte liegen aber
-%   zu unregelmaessigen Zeitpunkten vor. Danach lineare Trendbereinigung.
+%INTERPOLATE_RR_SIGNAL  Resample the RR series onto a uniform grid and detrend it.
+%   [T_U, SIG, FS_I] = INTERPOLATE_RR_SIGNAL(T_RR, RR, FS_I) spline-interpolates
+%   the RR values onto an evenly spaced time grid and removes the linear trend.
+%   The FFT assumes uniform sampling, but the RR values arrive at the irregular
+%   times of the heartbeats.
+%
+%   Input:
+%     T_RR - time stamps of the RR intervals in s.
+%     RR   - RR intervals in ms.
+%     FS_I - target sampling rate in Hz (optional, default 4).
+%
+%   Output:
+%     T_U  - uniform time grid in s.
+%     SIG  - interpolated, linearly detrended RR signal in ms.
+%     FS_I - the sampling rate actually used, in Hz.
 
 if nargin < 3 || isempty(fs_i), fs_i = 4; end
 t_rr = t_rr(:);  rr = rr(:);
@@ -221,17 +264,28 @@ end
 
 % =========================================================================
 function [xw, win] = apply_window_function(x, window_type)
-%APPLY_WINDOW_FUNCTION  Fensterung eines Segments.
-%   Gibt das gefensterte Signal XW UND den Fenstervektor WIN zurueck (WIN
-%   wird zur Leistungsnormierung in calculate_fft gebraucht). Fenster
-%   daempfen die Segmentraender und reduzieren so das spektrale Leakage,
-%   verbreitern aber die Hauptkeule (geringere Aufloesung).
-%   Reinen Fenstervektor: [~,w] = apply_window_function(ones(N,1),'hann');
+%APPLY_WINDOW_FUNCTION  Multiply a segment by a named window function.
+%   [XW, WIN] = APPLY_WINDOW_FUNCTION(X, WINDOW_TYPE) returns the windowed
+%   signal XW and the window vector WIN itself (WIN is needed for the power
+%   normalisation in CALCULATE_FFT). Windows taper the segment edges and thus
+%   reduce spectral leakage, but they widen the main lobe (lower resolution).
+%
+%   Input:
+%     X           - segment to be windowed (vector of length N).
+%     WINDOW_TYPE - 'rect', 'hann', 'hamming', 'blackman', 'kaiser' or
+%                   'flattop'; anything else raises an error.
+%
+%   Output:
+%     XW  - windowed segment, column vector of length N.
+%     WIN - window vector used, column vector of length N.
+%
+%   To obtain the bare window vector:
+%     [~, w] = apply_window_function(ones(N,1), 'hann');
 
 x = double(x(:));
 N = numel(x);
 switch lower(window_type)
-    case 'rect',     win = ones(N,1);     % keine Fensterung
+    case 'rect',     win = ones(N,1);     % no windowing
     case 'hann',     win = hann(N);
     case 'hamming',  win = hamming(N);
     case 'blackman', win = blackman(N);
@@ -247,11 +301,20 @@ end
 
 % =========================================================================
 function [f, psd] = calculate_fft(xw, win, fs)
-%CALCULATE_FFT  Einseitige, leistungsnormierte PSD.
-%   PSD = |FFT(xw)|^2 / (fs*U) mit U = sum(win.^2). Die Normierung auf die
-%   Fensterleistung U macht die integrierte (Band-)Leistung weitgehend
-%   fensterunabhaengig. Innere Bins werden verdoppelt (einseitiges Spektrum
-%   eines reellen Signals).
+%CALCULATE_FFT  Compute the one-sided, power-normalised PSD of a windowed segment.
+%   [F, PSD] = CALCULATE_FFT(XW, WIN, FS) evaluates
+%   PSD = |FFT(XW)|^2 / (FS*U) with U = sum(WIN.^2). Normalising by the window
+%   power U makes the integrated (band) power largely independent of the window.
+%   The inner bins are doubled (one-sided spectrum of a real signal).
+%
+%   Input:
+%     XW  - windowed segment (vector of length N, see APPLY_WINDOW_FUNCTION).
+%     WIN - the window vector that was applied, same length as XW.
+%     FS  - sampling rate of the segment in Hz.
+%
+%   Output:
+%     F   - frequency axis in Hz, floor(N/2)+1 points from 0 to FS/2.
+%     PSD - power spectral density in signal units^2/Hz, same size as F.
 
 xw  = double(xw(:));  win = double(win(:));
 N   = numel(xw);
@@ -267,9 +330,20 @@ end
 
 % =========================================================================
 function hrv = calculate_hrv_bands(f, psd)
-%CALCULATE_HRV_BANDS  Leistung in VLF/LF/HF + LF/HF, relativ, n.u.
-%   Baender (Task Force 1996): VLF 0.0033-0.04, LF 0.04-0.15, HF 0.15-0.40 Hz.
-%   Bandleistung = Flaeche unter der PSD (Trapezregel).
+%CALCULATE_HRV_BANDS  Integrate a PSD into the VLF/LF/HF bands and derive HRV measures.
+%   HRV = CALCULATE_HRV_BANDS(F, PSD) computes the band power as the area under
+%   the PSD (trapezoidal rule) over the bands defined by the Task Force (1996):
+%   VLF 0.0033-0.04 Hz, LF 0.04-0.15 Hz, HF 0.15-0.40 Hz.
+%
+%   Input:
+%     F   - frequency axis in Hz (see CALCULATE_FFT).
+%     PSD - power spectral density belonging to F, in ms^2/Hz.
+%
+%   Output:
+%     HRV - struct with the absolute band powers VLF, LF, HF and Total in ms^2,
+%           the relative shares VLF_rel/LF_rel/HF_rel in % of Total, the
+%           normalised units LF_nu/HF_nu in % of (LF+HF), and the ratio LF_HF
+%           (NaN if HF is zero).
 
 f = f(:);  psd = psd(:);
 bands = struct('VLF',[0.0033 0.04], 'LF',[0.04 0.15], 'HF',[0.15 0.40]);
@@ -292,7 +366,7 @@ else
     hrv.VLF_rel = 0; hrv.LF_rel = 0; hrv.HF_rel = 0;
 end
 
-lf_hf = hrv.LF + hrv.HF;                  % normalisierte Einheiten
+lf_hf = hrv.LF + hrv.HF;                  % normalised units
 if lf_hf > 0
     hrv.LF_nu = 100*hrv.LF/lf_hf;  hrv.HF_nu = 100*hrv.HF/lf_hf;
 else
@@ -304,12 +378,28 @@ end
 
 % =========================================================================
 function results = compare_window_functions(sig, fs_i, windows, seg_len_s, overlap)
-%COMPARE_WINDOW_FUNCTIONS  Welch-Spektren je Fenster + Vergleich.
-%   Das Signal wird in Segmente (Laenge seg_len_s, Ueberlappung overlap)
-%   zerlegt; je Segment wird gefenstert und eine PSD gebildet, die PSDs
-%   werden gemittelt (Welch). Das senkt die Varianz der Schaetzung.
-%   Rueckgabe: Struktur-Array je Fenster (.name .f .psd .seg_psd .t_seg
-%   .hrv .metrics). Zusaetzlich Vergleichsplots + Konsolentabelle.
+%COMPARE_WINDOW_FUNCTIONS  Estimate a Welch spectrum per window function and compare them.
+%   RESULTS = COMPARE_WINDOW_FUNCTIONS(SIG, FS_I, WINDOWS, SEG_LEN_S, OVERLAP)
+%   splits the signal into segments, windows each segment and forms its PSD,
+%   then averages the PSDs (Welch), which lowers the variance of the estimate.
+%   It also draws the comparison plots and prints the console table.
+%
+%   Input:
+%     SIG       - uniformly sampled RR signal (see INTERPOLATE_RR_SIGNAL).
+%     FS_I      - sampling rate of SIG in Hz.
+%     WINDOWS   - cell array of window names (optional, default all six).
+%     SEG_LEN_S - segment length in s (optional, default 300).
+%     OVERLAP   - segment overlap as a fraction 0..1 (optional, default 0.5).
+%
+%   Output:
+%     RESULTS - 1-by-numel(WINDOWS) struct array with the fields
+%               .name    window name
+%               .f       frequency axis in Hz
+%               .psd     Welch-averaged PSD in ms^2/Hz
+%               .seg_psd PSD of every segment, one column per segment
+%               .t_seg   start time of every segment in s
+%               .hrv     band measures (see CALCULATE_HRV_BANDS)
+%               .metrics window measures (see WINDOW_METRICS)
 
 if nargin < 3 || isempty(windows)
     windows = {'rect','hann','hamming','blackman','kaiser','flattop'};
@@ -338,16 +428,16 @@ for iw = 1:numel(windows)
     wname = windows{iw};
     [~, win] = apply_window_function(ones(N,1), wname);
 
-    seg_psd = zeros(floor(N/2)+1, nSeg);    % Spektren aller Segmente vorab reservieren (FFT-Laenge = floor(N/2)+1)
+    seg_psd = zeros(floor(N/2)+1, nSeg);    % preallocate the spectra of all segments (FFT length = floor(N/2)+1)
     for is = 1:nSeg
-        s0  = starts(is);                   % Startindex des Segments
-        seg = sig(s0:s0+N-1);               % Segment der Laenge N ausschneiden
-        seg = seg - mean(seg);              % lokalen DC abziehen
+        s0  = starts(is);                   % start index of the segment
+        seg = sig(s0:s0+N-1);               % cut out the segment of length N
+        seg = seg - mean(seg);              % subtract the local DC
         [f, psd] = calculate_fft(seg.*win, win, fs_i);
-        seg_psd(:, is) = psd;               % PSD dieses Segments in Spalte is ablegen
+        seg_psd(:, is) = psd;               % store the PSD of this segment in column is
     end
 
-    psd_avg = mean(seg_psd, 2);             % Welch-Mittelung
+    psd_avg = mean(seg_psd, 2);             % Welch averaging
     results(iw).name    = wname;
     results(iw).f       = f;
     results(iw).psd     = psd_avg;
@@ -365,35 +455,49 @@ end
 
 % =========================================================================
 function m = window_metrics(win)
-%WINDOW_METRICS  Kenngroessen: PSL [dB], MLW [Bins], ENBW [Bins].
-%   PSL = hoechste Nebenkeule (Leakage-Mass), MLW = Hauptkeulenbreite
-%   (Aufloesungs-Mass), ENBW = aequivalente Rauschbandbreite. Alle drei
-%   werden mit eingebauten Funktionen aus dem Frequenzgang bestimmt.
+%WINDOW_METRICS  Measure the leakage, resolution and noise bandwidth of a window.
+%   M = WINDOW_METRICS(WIN) derives all three figures from the frequency
+%   response of the window using built-in functions.
+%
+%   Input:
+%     WIN - window vector of length N (see APPLY_WINDOW_FUNCTION).
+%
+%   Output:
+%     M - struct with the fields
+%         .PSL  peak side lobe in dB relative to the main lobe (leakage measure)
+%         .MLW  main lobe width in FFT bins (resolution measure)
+%         .ENBW equivalent noise bandwidth in FFT bins
 
 win  = win(:);  N = numel(win);
-m.ENBW = enbw(win);                          % aequivalente Rauschbandbreite
+m.ENBW = enbw(win);                          % equivalent noise bandwidth
 
-% Frequenzgang des Fensters, fein aufgeloest durch Zero-Padding
+% Frequency response of the window, finely resolved by zero padding
 Nfft = 8192;
 W    = abs(fft(win, Nfft));
 W    = W(1:Nfft/2+1);
-fbin = (0:Nfft/2).' * N / Nfft;              % Frequenzachse in FFT-Bins
-WdB  = 20*log10(W/max(W) + eps);             % normiert, Hauptpeak = 0 dB
+fbin = (0:Nfft/2).' * N / Nfft;              % frequency axis in FFT bins
+WdB  = 20*log10(W/max(W) + eps);             % normalised, main peak = 0 dB
 
-% Erste Nullstelle = erstes lokales Minimum jenseits von 0.5 Bins (die
-% Hauptkeule ist stets breiter; so stoert eine Welligkeit im flachen
-% Flat-Top-Scheitel nicht).
+% First null = first local minimum beyond 0.5 bins (the main lobe is always
+% wider, so ripple in the flat top of the flat-top window does not interfere).
 nulls     = fbin(islocalmin(W));
 nulls     = nulls(nulls > 0.5);
 firstNull = nulls(1);
 
-m.MLW = 2 * firstNull;                       % Hauptkeulenbreite = 2 x erste Nullstelle
-m.PSL = max(WdB(fbin > firstNull));          % hoechste Nebenkeule (alles nach der Hauptkeule)
+m.MLW = 2 * firstNull;                       % main lobe width = 2 x first null
+m.PSL = max(WdB(fbin > firstNull));          % highest side lobe (everything beyond the main lobe)
 end
 
 % =========================================================================
 function plot_window_characteristics(windows, N)
-%PLOT_WINDOW_CHARACTERISTICS  Fensterform (Zeit) und Frequenzgang (dB).
+%PLOT_WINDOW_CHARACTERISTICS  Plot the window shapes (time) next to their frequency responses (dB).
+%   PLOT_WINDOW_CHARACTERISTICS(WINDOWS, N) opens one figure with two subplots
+%   that show why the windows differ in leakage and resolution.
+%
+%   Input:
+%     WINDOWS - cell array of window names.
+%     N       - window length in samples the windows are built with.
+
 colors = lines(numel(windows));
 figure('Color','w','Position',[100 100 1000 420]);
 
@@ -424,18 +528,26 @@ end
 
 % =========================================================================
 function plot_overlaid_spectra(results, logScale)
-%PLOT_OVERLAID_SPECTRA  Ueberlagerte HRV-Spektren (linear oder dB).
+%PLOT_OVERLAID_SPECTRA  Plot the HRV spectra of all windows on top of each other.
+%   PLOT_OVERLAID_SPECTRA(RESULTS, LOGSCALE) opens one figure with the HRV band
+%   limits marked, so the windows can be compared directly.
+%
+%   Input:
+%     RESULTS  - struct array from COMPARE_WINDOW_FUNCTIONS.
+%     LOGSCALE - false for a linear PSD axis, true for a dB axis; the dB view
+%                exposes the leakage floor, the linear view the band powers.
+
 colors = lines(numel(results));
 figure('Color','w'); hold on;
-% Lineare Ansicht bis knapp hinter das HF-Band (0.40 Hz) zoomen -> der leere
-% Bereich 0.45-0.5 Hz entfaellt. Die dB-Ansicht zeigt den ganzen Leakage-Boden.
+% Zoom the linear view to just past the HF band (0.40 Hz) -> the empty range
+% 0.45-0.5 Hz is dropped. The dB view shows the whole leakage floor.
 if logScale, fmax = 0.5; else, fmax = 0.45; end
 for iw = 1:numel(results)
     f = results(iw).f;  psd = results(iw).psd;
     if logScale, y = 10*log10(psd + eps); else, y = psd; end
     plot(f, y, 'LineWidth', 1.3, 'Color', colors(iw,:));
 end
-yl = ylim;                               % Bandgrenzen (plot-basiert)
+yl = ylim;                               % band limits (plot-based)
 for fb = [0.04 0.15 0.40]
     plot([fb fb], yl, ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility','off');
 end
@@ -453,7 +565,13 @@ end
 
 % =========================================================================
 function print_comparison_table(results)
-%PRINT_COMPARISON_TABLE  Vergleichstabelle im Befehlsfenster.
+%PRINT_COMPARISON_TABLE  Print the window and HRV measures as a table in the command window.
+%   PRINT_COMPARISON_TABLE(RESULTS) lists PSL, MLW and ENBW next to the band
+%   powers of every window, so the numbers behind the plots can be read off.
+%
+%   Input:
+%     RESULTS - struct array from COMPARE_WINDOW_FUNCTIONS.
+
 fprintf('\n=================== Vergleich der Fensterfunktionen ===================\n');
 fprintf('%-9s | %7s %6s %6s | %8s %8s %7s | %6s\n', ...
     'Fenster','PSL','MLW','ENBW','LF','HF','LF/HF','VLF');
@@ -470,13 +588,21 @@ end
 
 % =========================================================================
 function plot_spectrum(f, psd, window_name, hrv)
-%PLOT_SPECTRUM  HRV-Leistungsdichtespektrum mit schattierten Baendern.
-%   Optionales hrv-Argument blendet LF/HF-Kennwerte als Textfeld ein.
+%PLOT_SPECTRUM  Plot one HRV power spectral density with the VLF/LF/HF bands shaded.
+%   PLOT_SPECTRUM(F, PSD, WINDOW_NAME, HRV) opens one figure for a single
+%   window function.
+%
+%   Input:
+%     F           - frequency axis in Hz.
+%     PSD         - power spectral density belonging to F, in ms^2/Hz.
+%     WINDOW_NAME - window name for the title (optional).
+%     HRV         - band measures (optional); if given, the LF/HF values are
+%                   shown in a text box inside the plot.
 
 if nargin < 3 || isempty(window_name), window_name = ''; end
 figure('Color','w'); hold on;
 
-fmax = 0.45;    % bis knapp hinter das HF-Band (0.40 Hz); leerer Bereich 0.45-0.5 Hz entfaellt
+fmax = 0.45;    % up to just past the HF band (0.40 Hz); the empty range 0.45-0.5 Hz is dropped
 ymax = 1.05 * max(psd(f <= fmax));
 if ~isfinite(ymax) || ymax <= 0, ymax = 1; end
 
@@ -493,8 +619,8 @@ legend({'VLF (0.0033-0.04 Hz)','LF (0.04-0.15 Hz)','HF (0.15-0.40 Hz)','PSD'}, .
 if nargin >= 4 && ~isempty(hrv)
     txt = sprintf('LF/HF = %.2f\nLF = %.1f ms^2 (%.0f%%)\nHF = %.1f ms^2 (%.0f%%)', ...
         hrv.LF_HF, hrv.LF, hrv.LF_rel, hrv.HF, hrv.HF_rel);
-    % Textbox auf halbe Hoehe setzen: die Legende sitzt oben rechts (northeast),
-    % oberhalb der PSD ist die rechte Haelfte leer -> keine Ueberlappung mehr.
+    % Place the text box at half height: the legend sits at the top right
+    % (northeast), and above the PSD the right half is empty -> no overlap.
     text(0.97*fmax, 0.55*ymax, txt, 'HorizontalAlignment','right', ...
         'VerticalAlignment','top', 'BackgroundColor','w', ...
         'EdgeColor',[0.6 0.6 0.6], 'FontSize',9);
@@ -504,7 +630,12 @@ end
 
 % =========================================================================
 function shade_hrv_bands(ymax)
-%SHADE_HRV_BANDS  Hinterlegt VLF/LF/HF farblich.
+%SHADE_HRV_BANDS  Shade the VLF/LF/HF bands of the current axes in colour.
+%   SHADE_HRV_BANDS(YMAX) draws one patch per band across the full plot height.
+%
+%   Input:
+%     YMAX - upper edge of the patches, i.e. the y limit of the axes.
+
 bands = [0.0033 0.04; 0.04 0.15; 0.15 0.40];
 cols  = [0.85 0.90 0.98; 0.80 0.95 0.85; 0.99 0.88 0.82];
 for i = 1:size(bands,1)
@@ -516,16 +647,23 @@ end
 
 % =========================================================================
 function plot_waterfall(f, seg_psd, t_seg, window_name, zmax_common)
-%PLOT_WATERFALL  3D-Wasserfall der Segmentspektren mit HRV-Bandgrenzen.
-%   Jede Linie = Spektrum eines Segments -> zeitliche Stabilitaet sichtbar.
-%   zmax_common (optional) setzt eine fuer alle Fenster einheitliche
-%   z- und Farbskala (Anforderung 2.7 "einheitliche Skalierung").
+%PLOT_WATERFALL  Plot the segment spectra as a 3D waterfall with the HRV band limits.
+%   PLOT_WATERFALL(F, SEG_PSD, T_SEG, WINDOW_NAME, ZMAX_COMMON) draws one line
+%   per segment, which makes the stability of the spectrum over time visible.
+%
+%   Input:
+%     F           - frequency axis in Hz.
+%     SEG_PSD     - PSD of every segment, one column per segment.
+%     T_SEG       - start time of every segment in s (optional, default 1:nSeg).
+%     WINDOW_NAME - window name for the title (optional).
+%     ZMAX_COMMON - upper limit of the z and colour axis (optional); pass the
+%                   same value for every window to make the plots comparable.
 
 if nargin < 4 || isempty(window_name), window_name = ''; end
 f   = f(:);
 sel = f <= 0.5;
 fz  = f(sel);
-Z   = seg_psd(sel, :).';                 % Zeilen = Segmente
+Z   = seg_psd(sel, :).';                 % rows = segments
 nSeg = size(Z, 1);
 if nargin < 3 || isempty(t_seg), t_seg = 1:nSeg; end
 t_seg = t_seg(:);
@@ -538,16 +676,16 @@ zlabel('Leistungsdichte [ms^2/Hz]');
 title(sprintf('HRV-Wasserfalldiagramm - Fenster: %s', window_name));
 grid on; box on; view(40, 30);
 
-% Gemeinsames z-Maximum: entweder uebergeben oder aus diesem Diagramm.
+% Common z maximum: either passed in or taken from this diagram.
 if nargin >= 5 && ~isempty(zmax_common) && isfinite(zmax_common) && zmax_common > 0
     zmax = zmax_common;
-    zlim([0 zmax]); clim([0 zmax]);      % einheitliche z- und Farbskala (clim = aktueller Ersatz fuer caxis)
+    zlim([0 zmax]); clim([0 zmax]);      % uniform z and colour scale (clim = current replacement for caxis)
 else
     zmax = max(Z(:));
 end
 
-% HRV-Bandgrenzen je als senkrechtes, halbtransparentes Rechteck markieren
-% (Rechteck in der Ebene x = fb, aufgespannt ueber Zeit- und z-Achse).
+% Mark each HRV band limit as an upright, semi-transparent rectangle
+% (rectangle in the plane x = fb, spanned over the time and z axis).
 hold on;
 if ~isfinite(zmax) || zmax <= 0, zmax = 1; end
 ymin = min(t_seg); ymax = max(t_seg); if ymax == ymin, ymax = ymin+1; end

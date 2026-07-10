@@ -428,13 +428,13 @@ for iw = 1:numel(windows)
     wname = windows{iw};
     [~, win] = apply_window_function(ones(N,1), wname);
 
-    seg_psd = zeros(floor(N/2)+1, nSeg);    % preallocate the spectra of all segments (FFT length = floor(N/2)+1)
+    seg_psd = zeros(floor(N/2)+1, nSeg);
     for is = 1:nSeg
-        s0  = starts(is);                   % start index of the segment
-        seg = sig(s0:s0+N-1);               % cut out the segment of length N
-        seg = seg - mean(seg);              % subtract the local DC
+        s0  = starts(is);
+        seg = sig(s0:s0+N-1);
+        seg = seg - mean(seg);              % local DC would leak into the VLF band
         [f, psd] = calculate_fft(seg.*win, win, fs_i);
-        seg_psd(:, is) = psd;               % store the PSD of this segment in column is
+        seg_psd(:, is) = psd;
     end
 
     psd_avg = mean(seg_psd, 2);             % Welch averaging
@@ -547,7 +547,7 @@ for iw = 1:numel(results)
     if logScale, y = 10*log10(psd + eps); else, y = psd; end
     plot(f, y, 'LineWidth', 1.3, 'Color', colors(iw,:));
 end
-yl = ylim;                               % band limits (plot-based)
+yl = ylim;                               % freeze the limits before drawing the band markers
 for fb = [0.04 0.15 0.40]
     plot([fb fb], yl, ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility','off');
 end

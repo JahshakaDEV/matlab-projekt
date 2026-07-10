@@ -427,7 +427,9 @@ function plot_overlaid_spectra(results, logScale)
 %PLOT_OVERLAID_SPECTRA  Ueberlagerte HRV-Spektren (linear oder dB).
 colors = lines(numel(results));
 figure('Color','w'); hold on;
-fmax = 0.5;
+% Lineare Ansicht bis knapp hinter das HF-Band (0.40 Hz) zoomen -> der leere
+% Bereich 0.45-0.5 Hz entfaellt. Die dB-Ansicht zeigt den ganzen Leakage-Boden.
+if logScale, fmax = 0.5; else, fmax = 0.45; end
 for iw = 1:numel(results)
     f = results(iw).f;  psd = results(iw).psd;
     if logScale, y = 10*log10(psd + eps); else, y = psd; end
@@ -474,7 +476,7 @@ function plot_spectrum(f, psd, window_name, hrv)
 if nargin < 3 || isempty(window_name), window_name = ''; end
 figure('Color','w'); hold on;
 
-fmax = 0.5;
+fmax = 0.45;    % bis knapp hinter das HF-Band (0.40 Hz); leerer Bereich 0.45-0.5 Hz entfaellt
 ymax = 1.05 * max(psd(f <= fmax));
 if ~isfinite(ymax) || ymax <= 0, ymax = 1; end
 

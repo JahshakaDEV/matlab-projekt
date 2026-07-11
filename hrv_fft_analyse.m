@@ -23,7 +23,7 @@ OVERLAP    = 0.5;     % segment overlap
 WINDOWS    = {'rect','hann','hamming','blackman','kaiser','flattop'};
 
 %% --------------------------- 1. Load ECG -------------------------------
-% Task 2.1
+% Aufgabe 2.1
 
 fprintf('=== 1. EKG-Daten laden ===\n');
 [ecg_raw, fs] = load_ecg_data(EDF_FILE);
@@ -46,7 +46,7 @@ title('EKG - nach Vorverarbeitung (Ausschnitt 10-20 s)'); xlabel('Zeit [s]'); yl
 grid on; box on; xlim([10 20]);
 
 %% --------------------------- 3. R peaks --------------------------------
-% Task 2.2
+% Aufgabe 2.2
 
 fprintf('\n=== 3. R-Zacken-Erkennung ===\n');
 r_locs = detect_r_peaks(ecg, fs);
@@ -72,21 +72,20 @@ xlabel('Zeit [s]'); ylabel('RR-Intervall [ms]');
 grid on; box on; hold off;
 
 %% ------------------------- 5. Interpolation ----------------------------
-% Task 2.3
+% Aufgabe 2.3
 
 fprintf('\n=== 5. Interpolation (Resampling) ===\n');
 [~, sig, fs_i] = interpolate_rr_signal(t_rr, rr, FS_INTERP);
 
 %% ----------------------- 6. Window comparison --------------------------
-% Task 2.4
+% Aufgabe 2.4
 fprintf('\n=== 6. Vergleich der Fensterfunktionen ===\n');
 results = compare_window_functions(sig, fs_i, WINDOWS, SEG_LEN_S, OVERLAP);
 
 %% --------------------- 7. Individual plots -----------------------------
 fprintf('\n=== 7. Einzelspektren und Wasserfalldiagramme ===\n');
 
-% Common z maximum across all windows (requirement 2.7: uniform scaling ->
-% all waterfall diagrams become comparable).
+% Common z maximum across all windows .
 zmax_all = 0;
 for iw = 1:numel(results)
     sel_f  = results(iw).f <= 0.5;
@@ -332,7 +331,7 @@ end
 function hrv = calculate_hrv_bands(f, psd)
 %CALCULATE_HRV_BANDS  Integrate a PSD into the VLF/LF/HF bands and derive HRV measures.
 %   HRV = CALCULATE_HRV_BANDS(F, PSD) computes the band power as the area under
-%   the PSD (trapezoidal rule) over the bands defined by the Task Force (1996):
+%   the PSD (Trapez-Formel):
 %   VLF 0.0033-0.04 Hz, LF 0.04-0.15 Hz, HF 0.15-0.40 Hz.
 %
 %   Input:

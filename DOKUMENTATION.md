@@ -180,6 +180,10 @@ gleichzeitig maximal erreichbar. Jedes Fenster ist ein Kompromiss.
 | Kaiser (β=8) | einstellbar | sehr gut | gut | gering |
 | Flat-Top | **am schlechtesten** (sehr breit) | gut | **am besten** (Amplitude) | gering |
 
+**Stabilität der Spektren** bedeutet hier: Wie ähnlich sehen die Spektren aus, wenn man aufeinanderfolgende 5-Minuten-Segmente vergleicht? Ein stabiles Fenster liefert von Segment zu Segment ein ruhiges, konsistentes Bild mit wenig zufälligem Auf- und Abschwanken. In unserem Projekt sind Fenster mit guter Nebenkeulenunterdrückung meist stabiler, weil sie weniger Energie in Nachbarfrequenzen „verschmieren". Deshalb wirken Hann, Blackman und Kaiser über die Zeit deutlich ruhiger als das Rechteckfenster; Flat-Top ist zwar amplitudengenau, macht die Peaks aber breiter und damit weniger klar getrennt.
+
+**Rechenaufwand** ist bei euren Fenstern fast gleich, weil in allen Fällen dieselbe Segmentierung, dieselbe FFT-Länge und dieselbe Mittelung verwendet werden. Das Fenster selbst ist nur ein Vektor von Koeffizienten und wird einmal pro Segment punktweise multipliziert. Deshalb unterscheiden sich die Laufzeiten in der Praxis nur minimal. Rechteck ist rechnerisch am einfachsten, aber der Vorteil ist so klein, dass er gegenüber der spektralen Qualität kaum ins Gewicht fällt.
+
 **Leitfrage 1 – Einfluss auf die HRV-Spektralanalyse:**
 Das Rechteckfenster zeigt die schärfsten Peaks, „verschmiert" durch starkes
 Leakage aber Energie in benachbarte Bänder — das kann besonders die schwache

@@ -300,21 +300,21 @@ function [xw, win] = apply_window_function(x, window_type)
 %   To obtain the bare window vector:
 %     [~, w] = apply_window_function(ones(N,1), 'hann');
 
-x = double(x(:));
-N = numel(x);
-switch lower(window_type)
-    case 'rect',     win = ones(N,1);     % no windowing
-    case 'hann',     win = hann(N);
-    case 'hamming',  win = hamming(N);
-    case 'blackman', win = blackman(N);
-    case 'kaiser',   win = kaiser(N, 8);  % beta = 8
-    case 'flattop',  win = flattopwin(N);
+x = double(x(:)); % erzwingt double-Spaltenvektor
+N = numel(x); % Segmentlaenge in Samples
+switch lower(window_type) % Fenstertyp waehlen (Gross-/Kleinschreibung egal durch lower)
+    case 'rect',     win = ones(N,1);     % Rechteck = kein Fenster (alle Gewichte 1)
+    case 'hann',     win = hann(N);       % Hann-Fenster
+    case 'hamming',  win = hamming(N);    % Hamming-Fenster
+    case 'blackman', win = blackman(N);   % Blackman-Fenster
+    case 'kaiser',   win = kaiser(N, 8);  % Kaiser-Fenster, beta = 8 steuert die Nebenkeulendaempfung
+    case 'flattop',  win = flattopwin(N); % Flat-Top-Fenster (sehr flache Hauptkeule, gut fuer Amplitudentreue)
     otherwise
-        error('apply_window_function:unknownWindow', ...
+        error('apply_window_function:unknownWindow', ... % unbekannter Name -> Fehler ausloesen
             'Unbekannter Fenstertyp "%s".', window_type);
 end
-win = win(:);
-xw  = x .* win;
+win = win(:); % Fenstervektor als Spaltenvektor erzwingen
+xw  = x .* win; % Fenster elementweise auf das Segment anwenden
 end
 
 % =========================================================================
@@ -334,16 +334,16 @@ function [f, psd] = calculate_fft(xw, win, fs)
 %     F   - frequency axis in Hz, floor(N/2)+1 points from 0 to FS/2.
 %     PSD - power spectral density in signal units^2/Hz, same size as F.
 
-xw  = double(xw(:));  win = double(win(:));
-N   = numel(xw);
+xw  = double(xw(:));  win = double(win(:)); % beides als double-Spaltenvektoren erzwingen
+N   = numel(xw); % Segmentlaenge in Samples
 
-X = fft(xw);
-X = X(1:floor(N/2)+1);
-U   = sum(win .^ 2);
-psd = (abs(X).^2) / (fs * U);
-if N > 2, psd(2:end-1) = 2*psd(2:end-1); end
+X = fft(xw); % komplexes, beidseitiges Spektrum des gefensterten Segments
+X = X(1:floor(N/2)+1); % nur die einseitige (positive) Haelfte inkl. 0 Hz und Nyquist behalten
+U   = sum(win .^ 2); % Fensterleistung, macht die PSD weitgehend unabhaengig vom Fenster
+psd = (abs(X).^2) / (fs * U); % Leistungsdichte = Betragsquadrat, normiert auf fs und Fensterleistung
+if N > 2, psd(2:end-1) = 2*psd(2:end-1); end % innere Bins verdoppeln (Energie der neg. Frequenzen), 0 Hz und Nyquist nicht
 
-f = (0:floor(N/2)).' * (fs / N);
+f = (0:floor(N/2)).' * (fs / N); % zugehoerige Frequenzachse [Hz]: Bin-Index * Frequenzaufloesung fs/N
 end
 
 % =========================================================================
@@ -363,35 +363,35 @@ function hrv = calculate_hrv_bands(f, psd)
 %           normalised units LF_nu/HF_nu in % of (LF+HF), and the ratio LF_HF
 %           (NaN if HF is zero).
 
-f = f(:);  psd = psd(:);
-bands = struct('VLF',[0.0033 0.04], 'LF',[0.04 0.15], 'HF',[0.15 0.40]);
+f = f(:);  psd = psd(:); % Spaltenvektoren erzwingen
+bands = struct('VLF',[0.0033 0.04], 'LF',[0.04 0.15], 'HF',[0.15 0.40]); % Frequenzgrenzen der drei HRV-Baender [Hz]
 
-hrv = struct();
-names = fieldnames(bands);
-for i = 1:numel(names)
-    r = bands.(names{i});
-    m = (f >= r(1)) & (f < r(2));
-    if nnz(m) >= 2, hrv.(names{i}) = trapz(f(m), psd(m));
-    else,           hrv.(names{i}) = 0; end
+hrv = struct(); % Ergebnis-Struct anlegen
+names = fieldnames(bands); % Bandnamen als Zellarray {'VLF','LF','HF'}
+for i = 1:numel(names) % ueber jedes Band iterieren
+    r = bands.(names{i}); % untere/obere Frequenzgrenze dieses Bandes
+    m = (f >= r(1)) & (f < r(2)); % logische Maske: welche Frequenzbins liegen im Band
+    if nnz(m) >= 2, hrv.(names{i}) = trapz(f(m), psd(m)); % Bandleistung = Flaeche unter der PSD (Trapez-Integration)
+    else,           hrv.(names{i}) = 0; end % zu wenige Bins im Band -> Leistung 0
 end
 
-hrv.Total = hrv.VLF + hrv.LF + hrv.HF;
-if hrv.Total > 0
-    hrv.VLF_rel = 100*hrv.VLF/hrv.Total;
-    hrv.LF_rel  = 100*hrv.LF /hrv.Total;
-    hrv.HF_rel  = 100*hrv.HF /hrv.Total;
+hrv.Total = hrv.VLF + hrv.LF + hrv.HF; % Gesamtleistung als Summe der drei Baender
+if hrv.Total > 0 % Division durch 0 vermeiden
+    hrv.VLF_rel = 100*hrv.VLF/hrv.Total; % relativer Anteil VLF an der Gesamtleistung [%]
+    hrv.LF_rel  = 100*hrv.LF /hrv.Total; % relativer Anteil LF [%]
+    hrv.HF_rel  = 100*hrv.HF /hrv.Total; % relativer Anteil HF [%]
 else
-    hrv.VLF_rel = 0; hrv.LF_rel = 0; hrv.HF_rel = 0;
+    hrv.VLF_rel = 0; hrv.LF_rel = 0; hrv.HF_rel = 0; % keine Leistung -> alle Anteile 0
 end
 
-lf_hf = hrv.LF + hrv.HF;                  % normalised units
+lf_hf = hrv.LF + hrv.HF;                  % Summe aus LF und HF, Basis fuer die normalisierten Einheiten
 if lf_hf > 0
-    hrv.LF_nu = 100*hrv.LF/lf_hf;  hrv.HF_nu = 100*hrv.HF/lf_hf;
+    hrv.LF_nu = 100*hrv.LF/lf_hf;  hrv.HF_nu = 100*hrv.HF/lf_hf; % normalisierte Einheiten: Anteil an (LF+HF) [%]
 else
-    hrv.LF_nu = 0; hrv.HF_nu = 0;
+    hrv.LF_nu = 0; hrv.HF_nu = 0; % keine LF/HF-Leistung -> 0
 end
 
-if hrv.HF > 0, hrv.LF_HF = hrv.LF/hrv.HF; else, hrv.LF_HF = NaN; end
+if hrv.HF > 0, hrv.LF_HF = hrv.LF/hrv.HF; else, hrv.LF_HF = NaN; end % LF/HF-Verhaeltnis (Sympatho-Vagal-Balance), NaN falls HF = 0
 end
 
 % =========================================================================

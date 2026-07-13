@@ -170,7 +170,7 @@ ecg_filt = highpass(ecg_filt,0.5, fs); % Hochpassfilter, Entfernt sehr langsame 
 
 wo = 50/(fs/2); % fs/2 ist Nyquist Frequenz, Matlab Filterfunktionen erwarten normierte Frequenzen im Bereich 0-1
 % wobei 1 = Nyquist entsprcucht. wo ist also 50Hz normiert auf diesen Bereicht
-bw = wo/40;v% Q = 40, Bandbreite, ein hohes Q bedeutet eine sehr schamle scharfe Kerbe, es soll wirklich nur exakt 50Hz entfernen werden
+bw = wo/40; % Q = 40, Bandbreite, ein hohes Q bedeutet eine sehr schamle scharfe Kerbe, es soll wirklich nur exakt 50Hz entfernen werden
 [b,a] = iirnotch(wo, bw); % Entwirft die Filterkoeffizienten (b, a) für dieses schmale Kerbfilter (IIR = Infinite Impulse Response)
 % bei genau der Frequenz wo mit Bandbreite bw.
 ecg_filt = filtfilt(b, a, ecg_filt); % wendet den Filter an, 1. vorwärts 1. rückwärts, wegen Phasenverschiebung, R-Zacken werden nicht verschoben

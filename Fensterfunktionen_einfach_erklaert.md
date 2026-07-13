@@ -124,7 +124,7 @@ selbe Phänomen, nur im Spektrum statt im Ton.
 Anteile (VLF/LF) und nur **schwache schnelle** Anteile (HF). Durch Leakage
 „leckt" die starke langsame Energie in das schwache HF-Band hinüber – und dann
 sieht HF viel größer aus, als es wirklich ist. (Die konkreten Zahlen dazu kommen
-in Abschnitt 8.)
+in Abschnitt 9.)
 
 ---
 
@@ -269,7 +269,55 @@ Auflösung. Genau der Kompromiss aus Abschnitt 6.)
 
 ---
 
-## 8. Was bedeutet das konkret für die HRV?
+## 8. Das „HRV-Leistungsdichtespektrum" lesen (das Einzel-Diagramm)
+
+Bevor wir Fenster **vergleichen**, schauen wir uns *ein* fertiges Spektrum in Ruhe
+an. Das ist das Diagramm mit dem Titel **„HRV-Leistungsdichtespektrum"** (im Code:
+`plot_spectrum`, in `all_figures.pdf` z. B. die Einzelseiten pro Fenster).
+
+**Was heißt „Leistungsdichte" (PSD)?**
+Die FFT sagt uns, *welche* Frequenzen enthalten sind – die **PSD** (englisch
+*Power Spectral Density*) sagt zusätzlich, **wie viel „Leistung" (Stärke) pro
+Frequenz** steckt. Das Wort **Dichte** ist wörtlich gemeint, wie bei „Einwohner pro
+km²": nicht die Leistung an *einem* exakten Punkt, sondern **pro Frequenz-Abschnitt**
+(Einheit ms²/Hz). Der Vorteil:
+
+> Die **Fläche unter der Kurve** in einem Frequenzbereich = die **gesamte Leistung**
+> in diesem Bereich. Genau so berechnet der Code die Bandwerte VLF/LF/HF
+> (in `calculate_hrv_bands` per Flächenberechnung, `trapz`).
+
+**Wie liest man das Bild?**
+
+```
+  Leistungsdichte [ms²/Hz]
+     ^
+     |####|############|##########|
+     |####|############|##########|   <- die schwarze PSD-Kurve verläuft oben drüber
+     |VLF |     LF     |    HF    |
+     +----+------------+----------+------> Frequenz [Hz]
+    0  0.04         0.15        0.40
+     (farbig hinterlegt: die drei Bänder)
+```
+
+- **x-Achse** = Frequenz, **y-Achse** = Leistungsdichte.
+- Die **schwarze Kurve** ist das Spektrum selbst.
+- Die **farbigen Flächen** markieren die drei Bänder VLF/LF/HF (im Code:
+  `shade_hrv_bands`) – so sieht man sofort, in welchem Band die Kurve „Berge" hat.
+- Ein **Berg im HF-Band** (~0,25 Hz) kommt typischerweise von der **Atmung**, ein
+  Berg im **LF-Band** (~0,1 Hz) von der **Blutdruckregelung**.
+- Die kleine **Textbox** fasst die Kennzahlen zusammen: **LF/HF-Verhältnis** sowie
+  die LF- und HF-Leistung (absolut in ms² und als Prozent-Anteil).
+
+**Wofür ist dieses Diagramm gut?** Es ist die **Grundansicht** der ganzen Analyse:
+Für *eine* Aufnahme (mit *einem* Fenster) zeigt es auf einen Blick, wo die HRV ihre
+Energie hat – eher im schnellen HF-Bereich (Zeichen von Erholung/Ruhe) oder im
+langsameren LF-Bereich. Alle folgenden Diagramme bauen darauf auf: Abschnitt 9
+**vergleicht** solche Spektren für alle Fenster, Abschnitt 10 zeigt sie **über die
+Zeit** (Wasserfall).
+
+---
+
+## 9. Was bedeutet das konkret für die HRV?
 
 Jetzt wird es greifbar. Erinnerung: Das HRV-Signal hat **starke langsame** und nur
 **schwache schnelle** Anteile. Schauen wir, wie stark die Fensterwahl das
@@ -302,7 +350,7 @@ liegt **am tiefsten** – sie ist am saubersten.
 
 ---
 
-## 9. Das 3D-Wasserfalldiagramm
+## 10. Das 3D-Wasserfalldiagramm
 
 Bis jetzt haben wir *ein* Spektrum über die ganze Messung betrachtet. Aber die
 Rhythmen **ändern sich über die Zeit** (mal atmet man schneller, mal ruht man).
@@ -335,7 +383,7 @@ Wasserfälle **dieselbe Höhen- und Farbskala**.
 
 ---
 
-## 10. Fazit: Welches Fenster nehmen?
+## 11. Fazit: Welches Fenster nehmen?
 
 Es gibt kein „perfektes" Fenster (Naturgesetz, Abschnitt 6). Aber es gibt einen
 **guten Kompromiss** für die HRV:
@@ -350,7 +398,7 @@ Es gibt kein „perfektes" Fenster (Naturgesetz, Abschnitt 6). Aber es gibt eine
 
 ---
 
-## 11. Mini-Glossar (zum schnellen Nachschlagen)
+## 12. Mini-Glossar (zum schnellen Nachschlagen)
 
 | Begriff | In einem Satz |
 |---------|----------------|
@@ -372,12 +420,12 @@ Es gibt kein „perfektes" Fenster (Naturgesetz, Abschnitt 6). Aber es gibt eine
 
 ---
 
-## 12. Und im Code?
+## 13. Und im Code?
 
 Wer das Ganze im Programm nachlesen will:
 
 - Die technische Umsetzung Schritt für Schritt steht in [`DOKUMENTATION.md`](DOKUMENTATION.md).
 - Der Code selbst ist [`hrv_fft_analyse.m`](hrv_fft_analyse.m) – jede Fensterfunktion
   wird in `apply_window_function` erzeugt, die Kennzahlen aus Abschnitt 6 in
-  `window_metrics`, die HRV-Bänder aus Abschnitt 3/8 in `calculate_hrv_bands`.
+  `window_metrics`, die HRV-Bänder aus Abschnitt 3/9 in `calculate_hrv_bands`.
 - Alle hier erwähnten Diagramme liegen gesammelt in `all_figures.pdf`.

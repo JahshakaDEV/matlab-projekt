@@ -27,7 +27,9 @@ WINDOWS    = {'rect','hann','hamming','blackman','kaiser','flattop'};
 
 fprintf('=== 1. EKG-Daten laden ===\n');
 [ecg_raw, fs] = load_ecg_data(EDF_FILE);
-t = (0:numel(ecg_raw)-1).' / fs;
+t = (0:numel(ecg_raw)-1).' / fs; % Zeilenvektor der Sample Indizes -1 (0,1,2,3,..,N-1)
+% . transporniert den Zeilenvektor zum Spaltenvektor / fs teilt den Index durch die Abtastrate,
+% wandelt Also Sample Nr. N in Zeitpunkt N/fs Sekunden um
 
 %% ------------------------ 2. Preprocessing -----------------------------
 fprintf('\n=== 2. Vorverarbeitung ===\n');
@@ -53,7 +55,7 @@ r_locs = detect_r_peaks(ecg, fs);
 
 figure('Color','w','Position',[100 100 950 350]);
 plot(t(sel), ecg(sel), 'k'); hold on;
-r_sel = r_locs;                                  % all detected R peaks (xlim below only limits the visible view)
+r_sel = r_locs; % all detected R peaks (xlim below only limits the visible view)
 plot(r_sel/fs, ecg(r_sel), 'ro', 'MarkerFaceColor','r', 'MarkerSize',5);
 title('Erkannte R-Zacken');
 xlabel('Zeit [s]'); ylabel('Amplitude');
@@ -131,15 +133,18 @@ function [ecg, fs] = load_ecg_data(filename)
 %     ECG - raw ECG signal as a double column vector.
 %     FS  - sampling rate in Hz, derived from the header.
 
-info   = edfinfo(filename);
-recDur = seconds(info.DataRecordDuration);
-fs     = double(info.NumSamples(1)) / recDur;
+info   = edfinfo(filename); % Creates edfinfo object, contain information such as file size, number of data records, number of signals, and number of samples.
+recDur = seconds(info.DataRecordDuration); % Milli in Sekunden
+fs     = double(info.NumSamples(1)) / recDur; % Abtastrate auslesen
 
-tt    = edfread(filename);
-vname = tt.Properties.VariableNames{1};
-col   = tt.(vname);
+tt    = edfread(filename); % eig EKG Signal auslesen --> timetable
+vname = tt.Properties.VariableNames{1}; % Name der ersten Spalte / ersten Kanals.
+col   = tt.(vname); % extrahiert die Spalte aus dem <Timetable --> Rohdaten erster Kanal
 if iscell(col), ecg = cell2mat(col); else, ecg = col(:); end
-ecg = double(ecg(:));
+% Ist col ein Cell Array --> cell2mat fügt alle Blöcke zu einem durchgehenden Vektor zusammen
+% Ist es bereits numerisch --> col(:) erzwingt nur einen Spaltenvektor
+ecg = double(ecg(:)); % Stellt sicher das EDC ein Spaltenvektor mit double ist,
+% double wird für FFT gebraucht
 
 fprintf('EDF geladen: "%s" | Kanal "%s" | fs = %.1f Hz | Dauer = %.1f min\n', ...
     filename, vname, fs, numel(ecg)/fs/60);
@@ -159,15 +164,19 @@ function ecg_filt = preprocess_ecg(ecg, fs)
 %   Output:
 %     ECG_FILT - filtered ECG, same length as ECG.
 
-ecg_filt = ecg - mean(ecg);
-ecg_filt = highpass(ecg_filt,0.5, fs);
+ecg_filt = ecg - mean(ecg); % Entfernt den DC-Offset, Zentrierung um 0
+ecg_filt = highpass(ecg_filt,0.5, fs); % Hochpassfilter, Entfernt sehr langsame Schwankungen, Baseline Wander
+% bspw durch Atmung oder Elektrodenbewegung entstehen und sonst die R-Zacken Erkennung Stören. Alles unter 0.5 wird gedämpft
 
-wo = 50/(fs/2);
-bw = wo/40;                                       % Q = 40
-[b,a] = iirnotch(wo, bw);
-ecg_filt = filtfilt(b, a, ecg_filt);
+wo = 50/(fs/2); % fs/2 ist Nyquist Frequenz, Matlab Filterfunktionen erwarten normierte Frequenzen im Bereich 0-1
+% wobei 1 = Nyquist entsprcucht. wo ist also 50Hz normiert auf diesen Bereicht
+bw = wo/40;v% Q = 40, Bandbreite, ein hohes Q bedeutet eine sehr schamle scharfe Kerbe, es soll wirklich nur exakt 50Hz entfernen werden
+[b,a] = iirnotch(wo, bw); % Entwirft die Filterkoeffizienten (b, a) für dieses schmale Kerbfilter (IIR = Infinite Impulse Response)
+% bei genau der Frequenz wo mit Bandbreite bw.
+ecg_filt = filtfilt(b, a, ecg_filt); % wendet den Filter an, 1. vorwärts 1. rückwärts, wegen Phasenverschiebung, R-Zacken werden nicht verschoben
 
-ecg_filt = lowpass(ecg_filt, 40, fs);
+ecg_filt = lowpass(ecg_filt, 40, fs); % Tiefpass mit Grenzfrequewnz 40Hz, Entfernt hochfrequentes Rauschen (z.B. Muskelzittern/EMG-Störungen,
+% hochfrequente Messartefakte) oberhalb 40 Hz, da die relevante EKG-Information (inkl. QRS-Komplex) darunter liegt.
 end
 
 % =========================================================================
@@ -185,10 +194,11 @@ function locs = detect_r_peaks(ecg, fs)
 %   Output:
 %     LOCS - sample indices of the detected R peaks.
 
-schwelle       = mean(ecg) + 0.6*std(ecg);
-RR_min_samples = round(0.3*fs);                   % 0.3 s -> upper limit of ~200 bpm
+schwelle       = mean(ecg) + 0.6*std(ecg); % Mittelwert des Signals + 0.6*der Standardabweichung
+RR_min_samples = round(0.3*fs); % 0.3 s -> upper limit of ~200 bpm
 [~, locs] = findpeaks(ecg, ...
-    'MinPeakHeight', schwelle, 'MinPeakDistance', RR_min_samples);
+    'MinPeakHeight', schwelle, 'MinPeakDistance', RR_min_samples); % alle lokale Maxima im ecg, die über schwelle liegen
+% und mindesetens RR_min_samples Samples voneinander entferne sidn. Peak Werte werden verworfen ~, nur die Positionen locs
 fprintf('R-Zacken erkannt: %d\n', numel(locs));
 end
 
@@ -209,22 +219,26 @@ function [t_rr, rr, n_artifacts] = calculate_rr_intervals(r_locs, fs)
 %     T_RR        - time stamp of each interval in s (that of the later beat).
 %     RR          - RR intervals in ms, artefacts already corrected.
 %     N_ARTIFACTS - number of corrected values.
-
-r_locs = r_locs(:);
-t_r  = r_locs / fs;
-rr   = diff(t_r) * 1000;       % [ms]
-t_rr = t_r(2:end);
+r_locs = r_locs(:); % erzwingt Spaltenvektor
+t_r  = r_locs / fs; % Wandelt die Sample-Indizes der R-Zacken in Zeitpunkte (sek) um.
+rr   = diff(t_r) * 1000; % [ms] different zwischen Aufeinanderfolgenden Zeitpunkte, also benachbarte Herzschläge
+t_rr = t_r(2:end); % Ordnet jedem RR-Intervall einem Zeitstempel zu, der spätere Zeitpunkt der beiden Schläge
 
 % 300-2000 ms corresponds to ~30-200 bpm. The MAD-based movmedian check on top
 % of it adapts to the local spread, so it also catches single missed/false
 % beats in passages where the rate itself fluctuates.
-implausible = (rr < 300) | (rr > 2000);
-outlier     = isoutlier(rr, 'movmedian', 21);
-bad = implausible | outlier;
-n_artifacts = sum(bad);
+implausible = (rr < 300) | (rr > 2000); % Alle werte außerhalb 30-200bpm raus
+outlier     = isoutlier(rr, 'movmedian', 21); % Erkennt statistische Ausreißer relativ zu einem gleitenden Median,
+% über ein Fenster von 21 Werte.
+bad = implausible | outlier; % kobiniert beide Kriterien als bad
+n_artifacts = sum(bad); % zählt wie viele RR-Werte als Artefakt markiert wurden
 
 if n_artifacts > 0 && sum(~bad) >= 2
     rr(bad) = interp1(t_rr(~bad), rr(~bad), t_rr(bad), 'pchip', 'extrap');
+    %  ersetzt werte mit interp1 mit der Methode 'pchip' (stückweise kubische Hermite-Interpolation,
+    % glatt und ohne Überschwingen) schätzt die Werte an den Zeitpunkten der Artefakte (t_rr(bad))
+    % anhand der gültigen Nachbarwerte (t_rr(~bad), rr(~bad)). 'extrap' erlaubt Extrapolation,
+    % falls ein Artefakt am Rand liegt, wo keine Nachbarwerte auf beiden Seiten existieren.
 end
 
 fprintf(['RR-Intervalle: %d | Artefakte: %d | mittl. RR = %.1f ms ', ...
@@ -249,13 +263,18 @@ function [t_u, sig, fs_i] = interpolate_rr_signal(t_rr, rr, fs_i)
 %     T_U  - uniform time grid in s.
 %     SIG  - interpolated, linearly detrended RR signal in ms.
 %     FS_I - the sampling rate actually used, in Hz.
+% Diese Funktion resampelt das unregelmäßig abgetastete RR-Intervall-Signal
+% auf ein gleichmäßiges Zeitraster (Grundvoraussetzung für die FFT) und entfernt den linearen Trend.
+if nargin < 3 || isempty(fs_i), fs_i = 4; end % falls kein 3. Arg --> 4Hz als Standardwert
+t_rr = t_rr(:);  rr = rr(:); % Erzwingt Spaltenvektoren
 
-if nargin < 3 || isempty(fs_i), fs_i = 4; end
-t_rr = t_rr(:);  rr = rr(:);
-
-t_u = (t_rr(1) : 1/fs_i : t_rr(end)).';
-sig = interp1(t_rr, rr, t_u, 'spline');
-sig = detrend(sig, 1);
+t_u = (t_rr(1) : 1/fs_i : t_rr(end)).'; % Erzeugt das neue gleichmäßige Zeitraster: beginnend beim ersten RR-Zeitstempel
+% endend beim letzten, mit Schrittweite 1/fs_i Sekunden. .' transponiert das Ergebnis zu einem Spaltenvektor
+sig = interp1(t_rr, rr, t_u, 'spline'); % Imterpoliert die RR-Werte, die ursprünglich zu unregelmäßigen Zeitpunkten vorliegen,
+% auf die neuen gleichmäßigen Zeitpunkte t_u. spline sorgt für einen glatten Kurvenveerlauf zwischen den Stützstellen
+sig = detrend(sig, 1); % Entfernt einen linearen Trend aus dem Signal (1 --> linear, 0 wäre nur DC Offset), Ein langsamer
+% linearer Anstieg/Abfall der HF über die Aufnahme hinweg hat keine Bedeutung für die interessierenden HRV-Frequenzenbänder
+% würde aber als starke, tieffrequente Komponente die FFT verfäschen, deshalb entfernen
 
 fprintf('Interpoliert: %d Werte @ %.0f Hz | Dauer = %.0f s\n', ...
     numel(sig), fs_i, t_u(end)-t_u(1));

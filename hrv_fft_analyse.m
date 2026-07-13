@@ -419,56 +419,56 @@ function results = compare_window_functions(sig, fs_i, windows, seg_len_s, overl
 %               .hrv     band measures (see CALCULATE_HRV_BANDS)
 %               .metrics window measures (see WINDOW_METRICS)
 
-if nargin < 3 || isempty(windows)
+if nargin < 3 || isempty(windows) % falls kein 3. Arg --> alle 6 Fenster als Standard
     windows = {'rect','hann','hamming','blackman','kaiser','flattop'};
 end
-if nargin < 4 || isempty(seg_len_s), seg_len_s = 300; end
-if nargin < 5 || isempty(overlap),   overlap   = 0.5; end
+if nargin < 4 || isempty(seg_len_s), seg_len_s = 300; end % Standard Segmentlaenge 300s = 5min
+if nargin < 5 || isempty(overlap),   overlap   = 0.5; end % Standard Ueberlappung 50%
 
-sig = double(sig(:));
-N   = round(seg_len_s * fs_i);
-if N > numel(sig)
+sig = double(sig(:)); % erzwingt double Spaltenvektor
+N   = round(seg_len_s * fs_i); % Segmentlaenge in Samples = Dauer[s] * Abtastrate[Hz]
+if N > numel(sig) % Signal kuerzer als ein Segment abfangen
     warning('Signal kuerzer als ein Segment -> ganzes Signal als ein Segment.');
-    N = numel(sig);
+    N = numel(sig); % dann ganzes Signal als ein Segment
 end
-step   = max(1, round(N*(1-overlap)));
-starts = 1:step:(numel(sig)-N+1);
-if isempty(starts), starts = 1; end
-t_seg  = (starts-1) / fs_i;
-nSeg   = numel(starts);
+step   = max(1, round(N*(1-overlap))); % Versatz zwischen Segmentanfaengen, bei 50% = halbe Segmentlaenge
+starts = 1:step:(numel(sig)-N+1); % Startindizes aller Segmente, so dass jedes noch komplett ins Signal passt
+if isempty(starts), starts = 1; end % Sicherheit: mind. ein Segment ab Index 1
+t_seg  = (starts-1) / fs_i; % Startzeit jedes Segments in Sekunden
+nSeg   = numel(starts); % Anzahl der Segmente
 
 fprintf('\nFenstervergleich: %d Segmente a %.0f s (%.0f%% Ueberlappung), %d Fenster\n', ...
     nSeg, seg_len_s, overlap*100, numel(windows));
 
-results = struct('name',{}, 'f',{}, 'psd',{}, 'seg_psd',{}, ...
+results = struct('name',{}, 'f',{}, 'psd',{}, 'seg_psd',{}, ... % leeres Ergebnis-Struct-Array vorbereiten
     't_seg',{}, 'hrv',{}, 'metrics',{});
-for iw = 1:numel(windows)
-    wname = windows{iw};
-    [~, win] = apply_window_function(ones(N,1), wname);
+for iw = 1:numel(windows) % ueber jede Fensterfunktion iterieren
+    wname = windows{iw}; % Name des aktuellen Fensters
+    [~, win] = apply_window_function(ones(N,1), wname); % nur den Fenstervektor holen (Eingabe = Einsen)
 
-    seg_psd = zeros(floor(N/2)+1, nSeg);
-    for is = 1:nSeg
-        s0  = starts(is);
-        seg = sig(s0:s0+N-1);
+    seg_psd = zeros(floor(N/2)+1, nSeg); % Speicher: eine PSD-Spalte pro Segment
+    for is = 1:nSeg % ueber jedes Segment iterieren
+        s0  = starts(is); % Startindex dieses Segments
+        seg = sig(s0:s0+N-1); % Segment aus dem Signal ausschneiden
         seg = seg - mean(seg);              % local DC would leak into the VLF band
-        [f, psd] = calculate_fft(seg.*win, win, fs_i);
-        seg_psd(:, is) = psd;
+        [f, psd] = calculate_fft(seg.*win, win, fs_i); % Fenster anwenden und PSD berechnen
+        seg_psd(:, is) = psd; % PSD dieses Segments abspeichern
     end
 
     psd_avg = mean(seg_psd, 2);             % Welch averaging
-    results(iw).name    = wname;
-    results(iw).f       = f;
-    results(iw).psd     = psd_avg;
-    results(iw).seg_psd = seg_psd;
-    results(iw).t_seg   = t_seg;
-    results(iw).hrv     = calculate_hrv_bands(f, psd_avg);
-    results(iw).metrics = window_metrics(win);
+    results(iw).name    = wname; % Fenstername
+    results(iw).f       = f; % Frequenzachse in Hz
+    results(iw).psd     = psd_avg; % gemittelte PSD
+    results(iw).seg_psd = seg_psd; % alle Einzelsegment-PSDs (fuer Wasserfall)
+    results(iw).t_seg   = t_seg; % Startzeiten der Segmente
+    results(iw).hrv     = calculate_hrv_bands(f, psd_avg); % HRV-Bandleistungen (VLF/LF/HF)
+    results(iw).metrics = window_metrics(win); % Fenster-Guetemasse (PSL/MLW/ENBW)
 end
 
-plot_window_characteristics(windows, N);
-plot_overlaid_spectra(results, false);
-plot_overlaid_spectra(results, true);
-print_comparison_table(results);
+plot_window_characteristics(windows, N); % Fensterformen Zeit- und Frequenzbereich plotten
+plot_overlaid_spectra(results, false); % ueberlagerte Spektren linear
+plot_overlaid_spectra(results, true); % ueberlagerte Spektren logarithmisch (dB)
+print_comparison_table(results); % Vergleichstabelle in die Konsole drucken
 end
 
 % =========================================================================
@@ -486,21 +486,21 @@ function m = window_metrics(win)
 %         .MLW  main lobe width in FFT bins (resolution measure)
 %         .ENBW equivalent noise bandwidth in FFT bins
 
-win  = win(:);  N = numel(win);
+win  = win(:);  N = numel(win); % Spaltenvektor erzwingen, Fensterlaenge N
 m.ENBW = enbw(win);                          % equivalent noise bandwidth
 
 % Frequency response of the window, finely resolved by zero padding
-Nfft = 8192;
-W    = abs(fft(win, Nfft));
-W    = W(1:Nfft/2+1);
+Nfft = 8192; % starkes Zero-Padding fuer feine Frequenzaufloesung
+W    = abs(fft(win, Nfft)); % Betrag des Frequenzgangs des Fensters
+W    = W(1:Nfft/2+1); % nur die einseitige (positive) Haelfte behalten
 fbin = (0:Nfft/2).' * N / Nfft;              % frequency axis in FFT bins
 WdB  = 20*log10(W/max(W) + eps);             % normalised, main peak = 0 dB
 
 % First null = first local minimum beyond 0.5 bins (the main lobe is always
 % wider, so ripple in the flat top of the flat-top window does not interfere).
-nulls     = fbin(islocalmin(W));
-nulls     = nulls(nulls > 0.5);
-firstNull = nulls(1);
+nulls     = fbin(islocalmin(W)); % Frequenzen aller lokalen Minima (Nullstellen)
+nulls     = nulls(nulls > 0.5); % nur die jenseits 0.5 Bins (Hauptkeule ausschliessen)
+firstNull = nulls(1); % erste Nullstelle = Rand der Hauptkeule
 
 m.MLW = 2 * firstNull;                       % main lobe width = 2 x first null
 m.PSL = max(WdB(fbin > firstNull));          % highest side lobe (everything beyond the main lobe)
@@ -516,27 +516,27 @@ function plot_window_characteristics(windows, N)
 %     WINDOWS - cell array of window names.
 %     N       - window length in samples the windows are built with.
 
-colors = lines(numel(windows));
+colors = lines(numel(windows)); % eine unterscheidbare Farbe pro Fenster
 figure('Color','w','Position',[100 100 1000 420]);
 
-subplot(1,2,1); hold on;
-for iw = 1:numel(windows)
-    [~, win] = apply_window_function(ones(N,1), windows{iw});
-    plot((0:N-1)/(N-1), win, 'LineWidth', 1.4, 'Color', colors(iw,:));
+subplot(1,2,1); hold on; % linker Plot: Zeitbereich (Fensterform)
+for iw = 1:numel(windows) % ueber jedes Fenster
+    [~, win] = apply_window_function(ones(N,1), windows{iw}); % Fenstervektor holen
+    plot((0:N-1)/(N-1), win, 'LineWidth', 1.4, 'Color', colors(iw,:)); % Form ueber normierte Zeit 0..1 plotten
 end
 xlabel('normierte Zeit'); ylabel('Amplitude');
 title('Fensterfunktionen - Zeitbereich');
 legend(windows, 'Location','south', 'Interpreter','none');
 grid on; box on; ylim([0 1.05]); hold off;
 
-subplot(1,2,2); hold on;
-Nfft = 4096;
-for iw = 1:numel(windows)
-    [~, win] = apply_window_function(ones(N,1), windows{iw});
-    W   = abs(fft(win, Nfft)); W = W(1:Nfft/2+1);
-    WdB = 20*log10(W/max(W) + eps);
-    fb  = (0:Nfft/2) / Nfft * N;
-    plot(fb, WdB, 'LineWidth', 1.3, 'Color', colors(iw,:));
+subplot(1,2,2); hold on; % rechter Plot: Frequenzgang in dB
+Nfft = 4096; % Zero-Padding fuer glatten Frequenzgang
+for iw = 1:numel(windows) % ueber jedes Fenster
+    [~, win] = apply_window_function(ones(N,1), windows{iw}); % Fenstervektor holen
+    W   = abs(fft(win, Nfft)); W = W(1:Nfft/2+1); % Betragsspektrum, einseitig
+    WdB = 20*log10(W/max(W) + eps); % auf Hauptkeule normiert, in dB (eps gegen log(0))
+    fb  = (0:Nfft/2) / Nfft * N; % Frequenzachse in FFT-Bins
+    plot(fb, WdB, 'LineWidth', 1.3, 'Color', colors(iw,:)); % Hauptkeule + Nebenkeulen plotten
 end
 xlabel('Frequenz [Bins]'); ylabel('Betrag [dB]');
 title('Fensterfunktionen - Frequenzgang');
@@ -555,29 +555,29 @@ function plot_overlaid_spectra(results, logScale)
 %     LOGSCALE - false for a linear PSD axis, true for a dB axis; the dB view
 %                exposes the leakage floor, the linear view the band powers.
 
-colors = lines(numel(results));
+colors = lines(numel(results)); % eine Farbe pro Fenster
 figure('Color','w'); hold on;
 % Zoom the linear view to just past the HF band (0.40 Hz) -> the empty range
 % 0.45-0.5 Hz is dropped. The dB view shows the whole leakage floor.
-if logScale, fmax = 0.5; else, fmax = 0.45; end
-for iw = 1:numel(results)
-    f = results(iw).f;  psd = results(iw).psd;
-    if logScale, y = 10*log10(psd + eps); else, y = psd; end
-    plot(f, y, 'LineWidth', 1.3, 'Color', colors(iw,:));
+if logScale, fmax = 0.5; else, fmax = 0.45; end % obere Frequenzgrenze je nach Ansicht
+for iw = 1:numel(results) % ueber jedes Fenster
+    f = results(iw).f;  psd = results(iw).psd; % Frequenzachse und gemittelte PSD holen
+    if logScale, y = 10*log10(psd + eps); else, y = psd; end % dB-Ansicht oder lineare PSD
+    plot(f, y, 'LineWidth', 1.3, 'Color', colors(iw,:)); % Spektrum ueberlagert plotten
 end
 yl = ylim;                               % freeze the limits before drawing the band markers
-for fb = [0.04 0.15 0.40]
-    plot([fb fb], yl, ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility','off');
+for fb = [0.04 0.15 0.40] % senkrechte gestrichelte Linien an den HRV-Bandgrenzen
+    plot([fb fb], yl, ':', 'Color', [0.5 0.5 0.5], 'HandleVisibility','off'); % HandleVisibility off = nicht in Legende
 end
 ylim(yl); xlim([0 fmax]); xlabel('Frequenz [Hz]');
-if logScale
+if logScale % Achsenbeschriftung/Titel je nach Ansicht
     ylabel('Leistungsdichte [dB]');
     title('Ueberlagerte HRV-Spektren (logarithmisch) - Leakage-Vergleich');
 else
     ylabel('Leistungsdichte [ms^2/Hz]');
     title('Ueberlagerte HRV-Spektren (linear)');
 end
-legend({results.name}, 'Location','northeast', 'Interpreter','none');
+legend({results.name}, 'Location','northeast', 'Interpreter','none'); % Fensternamen als Legende
 grid on; box on; hold off;
 end
 
@@ -591,14 +591,14 @@ function print_comparison_table(results)
 %     RESULTS - struct array from COMPARE_WINDOW_FUNCTIONS.
 
 fprintf('\n=================== Vergleich der Fensterfunktionen ===================\n');
-fprintf('%-9s | %7s %6s %6s | %8s %8s %7s | %6s\n', ...
+fprintf('%-9s | %7s %6s %6s | %8s %8s %7s | %6s\n', ... % Kopfzeile mit Spaltennamen
     'Fenster','PSL','MLW','ENBW','LF','HF','LF/HF','VLF');
-fprintf('%-9s | %7s %6s %6s | %8s %8s %7s | %6s\n', ...
+fprintf('%-9s | %7s %6s %6s | %8s %8s %7s | %6s\n', ... % zweite Kopfzeile mit Einheiten
     '','[dB]','[Bin]','[Bin]','[ms^2]','[ms^2]','[-]','[ms^2]');
 fprintf('----------------------------------------------------------------------\n');
-for iw = 1:numel(results)
-    m = results(iw).metrics;  h = results(iw).hrv;
-    fprintf('%-9s | %7.1f %6.2f %6.2f | %8.1f %8.1f %7.2f | %6.1f\n', ...
+for iw = 1:numel(results) % ueber jedes Fenster eine Zeile drucken
+    m = results(iw).metrics;  h = results(iw).hrv; % Guetemasse und HRV-Werte holen
+    fprintf('%-9s | %7.1f %6.2f %6.2f | %8.1f %8.1f %7.2f | %6.1f\n', ... % Zahlen formatiert ausgeben
         results(iw).name, m.PSL, m.MLW, m.ENBW, h.LF, h.HF, h.LF_HF, h.VLF);
 end
 fprintf('======================================================================\n');
@@ -617,15 +617,15 @@ function plot_spectrum(f, psd, window_name, hrv)
 %     HRV         - band measures (optional); if given, the LF/HF values are
 %                   shown in a text box inside the plot.
 
-if nargin < 3 || isempty(window_name), window_name = ''; end
+if nargin < 3 || isempty(window_name), window_name = ''; end % Standard: leerer Fenstername
 figure('Color','w'); hold on;
 
 fmax = 0.45;    % up to just past the HF band (0.40 Hz); the empty range 0.45-0.5 Hz is dropped
-ymax = 1.05 * max(psd(f <= fmax));
-if ~isfinite(ymax) || ymax <= 0, ymax = 1; end
+ymax = 1.05 * max(psd(f <= fmax)); % obere y-Grenze = 5% ueber dem groessten sichtbaren PSD-Wert
+if ~isfinite(ymax) || ymax <= 0, ymax = 1; end % Sicherheit falls PSD leer/0
 
-shade_hrv_bands(ymax);
-plot(f, psd, 'k', 'LineWidth', 1.3);
+shade_hrv_bands(ymax); % VLF/LF/HF-Baender farbig hinterlegen
+plot(f, psd, 'k', 'LineWidth', 1.3); % eigentliche PSD-Kurve in schwarz
 
 xlim([0 fmax]); ylim([0 ymax]);
 xlabel('Frequenz [Hz]'); ylabel('Leistungsdichte [ms^2/Hz]');
@@ -634,12 +634,12 @@ grid on; box on;
 legend({'VLF (0.0033-0.04 Hz)','LF (0.04-0.15 Hz)','HF (0.15-0.40 Hz)','PSD'}, ...
     'Location','northeast');
 
-if nargin >= 4 && ~isempty(hrv)
-    txt = sprintf('LF/HF = %.2f\nLF = %.1f ms^2 (%.0f%%)\nHF = %.1f ms^2 (%.0f%%)', ...
+if nargin >= 4 && ~isempty(hrv) % nur wenn HRV-Werte uebergeben wurden
+    txt = sprintf('LF/HF = %.2f\nLF = %.1f ms^2 (%.0f%%)\nHF = %.1f ms^2 (%.0f%%)', ... % Textbox-Inhalt zusammenbauen
         hrv.LF_HF, hrv.LF, hrv.LF_rel, hrv.HF, hrv.HF_rel);
     % Place the text box at half height: the legend sits at the top right
     % (northeast), and above the PSD the right half is empty -> no overlap.
-    text(0.97*fmax, 0.55*ymax, txt, 'HorizontalAlignment','right', ...
+    text(0.97*fmax, 0.55*ymax, txt, 'HorizontalAlignment','right', ... % Textbox auf halber Hoehe rechts platzieren
         'VerticalAlignment','top', 'BackgroundColor','w', ...
         'EdgeColor',[0.6 0.6 0.6], 'FontSize',9);
 end
@@ -654,12 +654,12 @@ function shade_hrv_bands(ymax)
 %   Input:
 %     YMAX - upper edge of the patches, i.e. the y limit of the axes.
 
-bands = [0.0033 0.04; 0.04 0.15; 0.15 0.40];
-cols  = [0.85 0.90 0.98; 0.80 0.95 0.85; 0.99 0.88 0.82];
-for i = 1:size(bands,1)
-    x = bands(i,:);
-    patch([x(1) x(2) x(2) x(1)], [0 0 ymax ymax], cols(i,:), ...
-        'EdgeColor','none', 'FaceAlpha',0.7);
+bands = [0.0033 0.04; 0.04 0.15; 0.15 0.40]; % Frequenzgrenzen der drei HRV-Baender [Hz]
+cols  = [0.85 0.90 0.98; 0.80 0.95 0.85; 0.99 0.88 0.82]; % je eine RGB-Farbe pro Band
+for i = 1:size(bands,1) % ueber jedes Band
+    x = bands(i,:); % untere/obere Frequenzgrenze dieses Bandes
+    patch([x(1) x(2) x(2) x(1)], [0 0 ymax ymax], cols(i,:), ... % farbiges Rechteck ueber volle Hoehe
+        'EdgeColor','none', 'FaceAlpha',0.7); % keine Umrandung, halbtransparent
 end
 end
 
@@ -677,39 +677,39 @@ function plot_waterfall(f, seg_psd, t_seg, window_name, zmax_common)
 %     ZMAX_COMMON - upper limit of the z and colour axis (optional); pass the
 %                   same value for every window to make the plots comparable.
 
-if nargin < 4 || isempty(window_name), window_name = ''; end
-f   = f(:);
-sel = f <= 0.5;
-fz  = f(sel);
+if nargin < 4 || isempty(window_name), window_name = ''; end % Standard: leerer Fenstername
+f   = f(:); % Spaltenvektor erzwingen
+sel = f <= 0.5; % nur Frequenzen bis 0.5 Hz zeigen (darueber ist nichts Relevantes)
+fz  = f(sel); % gefilterte Frequenzachse
 Z   = seg_psd(sel, :).';                 % rows = segments
-nSeg = size(Z, 1);
-if nargin < 3 || isempty(t_seg), t_seg = 1:nSeg; end
-t_seg = t_seg(:);
+nSeg = size(Z, 1); % Anzahl der Segmente
+if nargin < 3 || isempty(t_seg), t_seg = 1:nSeg; end % Standard: Segmentnummer statt Zeit
+t_seg = t_seg(:); % Spaltenvektor erzwingen
 
 figure('Color','w');
-waterfall(fz, t_seg, Z);
-colormap(turbo);
+waterfall(fz, t_seg, Z); % 3D-Wasserfall: eine Linie pro Segment
+colormap(turbo); % Farbverlauf fuer die Hoehe
 xlabel('Frequenz [Hz]'); ylabel('Segment-Startzeit [s]');
 zlabel('Leistungsdichte [ms^2/Hz]');
 title(sprintf('HRV-Wasserfalldiagramm - Fenster: %s', window_name));
-grid on; box on; view(40, 30);
+grid on; box on; view(40, 30); % Blickwinkel (Azimut 40, Elevation 30)
 
 % Common z maximum: either passed in or taken from this diagram.
-if nargin >= 5 && ~isempty(zmax_common) && isfinite(zmax_common) && zmax_common > 0
-    zmax = zmax_common;
+if nargin >= 5 && ~isempty(zmax_common) && isfinite(zmax_common) && zmax_common > 0 % gemeinsames z-Maximum uebergeben?
+    zmax = zmax_common; % dann dieses verwenden --> alle Wasserfaelle vergleichbar
     zlim([0 zmax]); clim([0 zmax]);      % uniform z and colour scale (clim = current replacement for caxis)
 else
-    zmax = max(Z(:));
+    zmax = max(Z(:)); % sonst Maximum aus diesem Diagramm
 end
 
 % Mark each HRV band limit as an upright, semi-transparent rectangle
 % (rectangle in the plane x = fb, spanned over the time and z axis).
 hold on;
-if ~isfinite(zmax) || zmax <= 0, zmax = 1; end
-ymin = min(t_seg); ymax = max(t_seg); if ymax == ymin, ymax = ymin+1; end
-for fb = [0.04 0.15 0.40]
-    patch([fb fb fb fb], [ymin ymin ymax ymax], [0 zmax zmax 0], ...
-        [0.4 0.4 0.4], 'FaceAlpha',0.12, 'EdgeColor','none');
+if ~isfinite(zmax) || zmax <= 0, zmax = 1; end % Sicherheit gegen ungueltiges zmax
+ymin = min(t_seg); ymax = max(t_seg); if ymax == ymin, ymax = ymin+1; end % y-Bereich (Zeitachse) der Flaechen
+for fb = [0.04 0.15 0.40] % je Bandgrenze eine aufrechte Flaeche
+    patch([fb fb fb fb], [ymin ymin ymax ymax], [0 zmax zmax 0], ... % Rechteck in der Ebene x = fb
+        [0.4 0.4 0.4], 'FaceAlpha',0.12, 'EdgeColor','none'); % grau, sehr transparent, ohne Rand
 end
 hold off;
 end
